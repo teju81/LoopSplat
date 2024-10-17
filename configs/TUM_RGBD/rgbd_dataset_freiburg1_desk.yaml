@@ -1,6 +1,6 @@
 inherit_from: configs/TUM_RGBD/tum_rgbd.yaml
 data:
-  input_path: data/TUM_RGBD-SLAM/rgbd_dataset_freiburg1_desk
+  input_path: /root/code/datasets/tum/rgbd_dataset_freiburg1_desk
   output_path: output/TUM_RGBD/rgbd_dataset_freiburg1_desk/
   scene_name: rgbd_dataset_freiburg1_desk
 cam:  #intrinsic is different per scene in TUM
