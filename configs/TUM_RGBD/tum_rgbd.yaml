@@ -1,7 +1,7 @@
 project_name: "LoopSplat_SLAM_tumrgbd"
 dataset_name: "tum_rgbd"
 checkpoint_path: null
-use_wandb: True
+use_wandb: False
 frame_limit: -1 # for debugging, set to -1 to disable
 seed: 0
 mapping:
