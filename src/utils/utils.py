@@ -197,7 +197,7 @@ def batch_search_faiss(indexer, query_points, k):
         distances (torch.Tensor): The distances of the nearest neighbors.
         ids (torch.Tensor): The indices of the nearest neighbors.
     """
-    split_pos = torch.split(query_points, 65535, dim=0)
+    split_pos = torch.split(np2torch(query_points), 65535, dim=0)
     distances_list, ids_list = [], []
 
     for split_p in split_pos:

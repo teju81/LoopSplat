@@ -217,11 +217,11 @@ class Tracker(object):
                     self.frame_depth_loss.append(depth_loss.item())
                     self.logger.log_tracking_iteration(
                         frame_id, cur_cam, gt_quat, gt_trans, total_loss, color_loss, depth_loss, iter, num_iters,
-                        wandb_output=True, print_output=True)
+                        wandb_output=True, print_output=False)
                 elif iter % 20 == 0:
                     self.logger.log_tracking_iteration(
                         frame_id, cur_cam, gt_quat, gt_trans, total_loss, color_loss, depth_loss, iter, num_iters,
-                        wandb_output=False, print_output=True)
+                        wandb_output=False, print_output=False)
 
         final_c2w = torch.inverse(torch.from_numpy(reference_w2c) @ best_w2c)
         final_c2w[-1, :] = torch.tensor([0., 0., 0., 1.], dtype=final_c2w.dtype, device=final_c2w.device)

@@ -278,7 +278,8 @@ class Loop_closure(object):
         if self.submap_id<3 or len(self.detect_closure(self.submap_id)) == 0:
             print(f"\nNo loop closure detected at submap no.{self.submap_id}")
             return correction_list
-        
+
+        print(f"\nLoop closure detected at submap no.{self.submap_id}...")
         pose_graph, odometry_edges, loop_edges = self.construct_pose_graph(final)
         
         # save pgo edge analysis result

@@ -46,8 +46,8 @@ def compute_overlap_gaussians(src_gs, tgt_gs, threshold=0.03):
         tgt_ts: _description_
         threshold (float, optional): _description_. Defaults to 0.03.
     """
-    src_tensor = src_gs.get_xyz().detach()
-    tgt_tensor = tgt_gs.get_xyz().detach()
+    src_tensor = src_gs.get_xyz().detach().cpu().numpy()
+    tgt_tensor = tgt_gs.get_xyz().detach().cpu().numpy()
     cpu_index = faiss.IndexFlatL2(3)
     gpu_index = faiss.index_cpu_to_all_gpus(cpu_index)
     gpu_index.add(tgt_tensor)
