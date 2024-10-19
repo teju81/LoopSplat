@@ -3,8 +3,8 @@ from torch import nn
 import numpy as np
 from PIL import Image
 
-from src.gsr.loss import image_gradient, image_gradient_mask
-from src.utils.graphics_utils import getProjectionMatrix2, getWorld2View2
+from loopsplat_ros.src.gsr.loss import image_gradient, image_gradient_mask
+from loopsplat_ros.src.utils.graphics_utils import getProjectionMatrix2, getWorld2View2
 
 
 

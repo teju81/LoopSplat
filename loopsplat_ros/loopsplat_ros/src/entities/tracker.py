@@ -7,17 +7,17 @@ import torch.nn.functional as F
 import torchvision
 from scipy.spatial.transform import Rotation as R
 
-from src.entities.arguments import OptimizationParams
-from src.entities.losses import l1_loss
-from src.entities.gaussian_model import GaussianModel
-from src.entities.logger import Logger
-from src.entities.datasets import BaseDataset
-from src.entities.visual_odometer import VisualOdometer
-from src.utils.gaussian_model_utils import build_rotation
-from src.utils.tracker_utils import (compute_camera_opt_params,
+from loopsplat_ros.src.entities.arguments import OptimizationParams
+from loopsplat_ros.src.entities.losses import l1_loss
+from loopsplat_ros.src.entities.gaussian_model import GaussianModel
+from loopsplat_ros.src.entities.logger import Logger
+from loopsplat_ros.src.entities.datasets import BaseDataset
+from loopsplat_ros.src.entities.visual_odometer import VisualOdometer
+from loopsplat_ros.src.utils.gaussian_model_utils import build_rotation
+from loopsplat_ros.src.utils.tracker_utils import (compute_camera_opt_params,
                                      extrapolate_poses, multiply_quaternions,
                                      transformation_to_quaternion)
-from src.utils.utils import (get_render_settings, np2torch,
+from loopsplat_ros.src.utils.utils import (get_render_settings, np2torch,
                              render_gaussian_model, torch2np)
 
 

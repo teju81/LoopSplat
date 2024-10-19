@@ -5,7 +5,7 @@ import faiss
 import faiss.contrib.torch_utils
 from pycg import vis
 
-from src.utils.utils import batch_search_faiss
+from loopsplat_ros.src.utils.utils import batch_search_faiss
 
 def get_correspondences(src_pcd, tgt_pcd, trans, search_voxel_size, K=None):
     src_pcd.transform(trans)

@@ -2,10 +2,10 @@ import torch, roma
 import numpy as np
 import copy
 
-from src.gsr.renderer import render
-from src.gsr.loss import get_loss_tracking
-from src.gsr.overlap import compute_overlap_gaussians
-from src.utils.pose_utils import update_pose
+from loopsplat_ros.src.gsr.renderer import render
+from loopsplat_ros.src.gsr.loss import get_loss_tracking
+from loopsplat_ros.src.gsr.overlap import compute_overlap_gaussians
+from loopsplat_ros.src.utils.pose_utils import update_pose
 
 
 class CustomPipeline:

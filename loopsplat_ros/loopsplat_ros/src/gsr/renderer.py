@@ -17,8 +17,8 @@ from diff_gaussian_rasterization import (
     GaussianRasterizer,
 )
 
-from src.entities.gaussian_model import GaussianModel
-from src.utils.gaussian_model_utils import eval_sh
+from loopsplat_ros.src.entities.gaussian_model import GaussianModel
+from loopsplat_ros.src.utils.gaussian_model_utils import eval_sh
 
 
 def render(

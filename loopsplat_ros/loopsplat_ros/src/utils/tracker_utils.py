@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from scipy.spatial.transform import Rotation
 from typing import Union
-from src.utils.utils import np2torch
+from loopsplat_ros.src.utils.utils import np2torch
 
 
 def multiply_quaternions(q: torch.Tensor, r: torch.Tensor) -> torch.Tensor:

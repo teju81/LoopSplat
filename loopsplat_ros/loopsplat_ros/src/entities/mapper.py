@@ -6,20 +6,20 @@ import numpy as np
 import torch
 import torchvision
 
-from src.entities.arguments import OptimizationParams
-from src.entities.datasets import TUM_RGBD, BaseDataset, ScanNet
-from src.entities.gaussian_model import GaussianModel
-from src.entities.logger import Logger
-from src.entities.losses import isotropic_loss, l1_loss, ssim
-from src.utils.mapper_utils import (calc_psnr, compute_camera_frustum_corners,
+from loopsplat_ros.src.entities.arguments import OptimizationParams
+from loopsplat_ros.src.entities.datasets import TUM_RGBD, BaseDataset, ScanNet
+from loopsplat_ros.src.entities.gaussian_model import GaussianModel
+from loopsplat_ros.src.entities.logger import Logger
+from loopsplat_ros.src.entities.losses import isotropic_loss, l1_loss, ssim
+from loopsplat_ros.src.utils.mapper_utils import (calc_psnr, compute_camera_frustum_corners,
                                     compute_frustum_point_ids,
                                     compute_new_points_ids,
                                     compute_opt_views_distribution,
                                     create_point_cloud, geometric_edge_mask,
                                     sample_pixels_based_on_gradient)
-from src.utils.utils import (get_render_settings, np2ptcloud, np2torch,
+from loopsplat_ros.src.utils.utils import (get_render_settings, np2ptcloud, np2torch,
                              render_gaussian_model, torch2np)
-from src.utils.vis_utils import *  # noqa - needed for debugging
+from loopsplat_ros.src.utils.vis_utils import *  # noqa - needed for debugging
 
 
 class Mapper(object):

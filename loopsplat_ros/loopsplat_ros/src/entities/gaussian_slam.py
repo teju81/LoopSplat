@@ -7,24 +7,25 @@ from argparse import ArgumentParser
 from datetime import datetime
 from pathlib import Path
 import rclpy
-from std_msgs import String
-from src.utils.io_utils import load_config
+from rclpy.node import Node
+from std_msgs.msg import String
+from loopsplat_ros.src.utils.io_utils import load_config
 
 import numpy as np
 import torch
 import roma
 
-from src.entities.arguments import OptimizationParams
-from src.entities.datasets import get_dataset
-from src.entities.gaussian_model import GaussianModel
-from src.entities.mapper import Mapper
-from src.entities.tracker import Tracker
-from src.entities.lc import Loop_closure
-from src.entities.logger import Logger
-from src.utils.io_utils import save_dict_to_ckpt, save_dict_to_yaml
-from src.utils.mapper_utils import exceeds_motion_thresholds 
-from src.utils.utils import np2torch, setup_seed, torch2np
-from src.utils.vis_utils import *  # noqa - needed for debugging
+from loopsplat_ros.src.entities.arguments import OptimizationParams
+from loopsplat_ros.src.entities.datasets import get_dataset
+from loopsplat_ros.src.entities.gaussian_model import GaussianModel
+from loopsplat_ros.src.entities.mapper import Mapper
+from loopsplat_ros.src.entities.tracker import Tracker
+from loopsplat_ros.src.entities.lc import Loop_closure
+from loopsplat_ros.src.entities.logger import Logger
+from loopsplat_ros.src.utils.io_utils import save_dict_to_ckpt, save_dict_to_yaml
+from loopsplat_ros.src.utils.mapper_utils import exceeds_motion_thresholds 
+from loopsplat_ros.src.utils.utils import np2torch, setup_seed, torch2np
+from loopsplat_ros.src.utils.vis_utils import *  # noqa - needed for debugging
 
 
 class GaussianSLAM(Node):

@@ -10,19 +10,19 @@ from PIL import Image
 from pathlib import Path
 import matplotlib.pyplot as plt
 
-from src.entities.logger import Logger
-from src.entities.datasets import BaseDataset
-from src.entities.gaussian_model import GaussianModel
-from src.entities.arguments import OptimizationParams
+from loopsplat_ros.src.entities.logger import Logger
+from loopsplat_ros.src.entities.datasets import BaseDataset
+from loopsplat_ros.src.entities.gaussian_model import GaussianModel
+from loopsplat_ros.src.entities.arguments import OptimizationParams
 
-from src.gsr.descriptor import GlobalDesc
-from src.gsr.camera import Camera
-from src.gsr.solver import gaussian_registration as gs_reg
-from src.gsr.pcr import (preprocess_point_cloud, execute_global_registration)
+from loopsplat_ros.src.gsr.descriptor import GlobalDesc
+from loopsplat_ros.src.gsr.camera import Camera
+from loopsplat_ros.src.gsr.solver import gaussian_registration as gs_reg
+from loopsplat_ros.src.gsr.pcr import (preprocess_point_cloud, execute_global_registration)
 
-from src.utils.utils import np2torch, torch2np
-from src.utils.graphics_utils import getProjectionMatrix2, focal2fov
-from src.utils.eval_utils import eval_ate
+from loopsplat_ros.src.utils.utils import np2torch, torch2np
+from loopsplat_ros.src.utils.graphics_utils import getProjectionMatrix2, focal2fov
+from loopsplat_ros.src.utils.eval_utils import eval_ate
 
 class PGO_Edge:
     def __init__(self, src_id, tgt_id, overlap=0.):

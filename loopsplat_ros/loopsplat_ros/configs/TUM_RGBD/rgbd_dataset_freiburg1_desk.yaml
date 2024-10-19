@@ -1,4 +1,4 @@
-inherit_from: configs/TUM_RGBD/tum_rgbd.yaml
+inherit_from: /root/code/loopsplat_ros_ws/src/loopsplat_ros/loopsplat_ros/configs/TUM_RGBD/tum_rgbd.yaml
 data:
   input_path: /root/code/datasets/tum/rgbd_dataset_freiburg1_desk
   output_path: /root/code/output/tum/rgbd_dataset_freiburg1_desk/

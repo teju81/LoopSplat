@@ -17,7 +17,7 @@ from plyfile import PlyData, PlyElement
 from simple_knn._C import distCUDA2
 from torch import nn
 
-from src.utils.gaussian_model_utils import (RGB2SH, build_scaling_rotation,
+from loopsplat_ros.src.utils.gaussian_model_utils import (RGB2SH, build_scaling_rotation,
                                             get_expon_lr_func, inverse_sigmoid,
                                             strip_symmetric, BasicPointCloud)
 
