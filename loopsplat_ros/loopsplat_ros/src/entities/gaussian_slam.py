@@ -6,6 +6,9 @@ import pprint
 from argparse import ArgumentParser
 from datetime import datetime
 from pathlib import Path
+import rclpy
+from std_msgs import String
+from src.utils.io_utils import load_config
 
 import numpy as np
 import torch
@@ -24,9 +27,10 @@ from src.utils.utils import np2torch, setup_seed, torch2np
 from src.utils.vis_utils import *  # noqa - needed for debugging
 
 
-class GaussianSLAM(object):
+class GaussianSLAM(Node):
 
     def __init__(self, config: dict) -> None:
+        super().__init__('gaussian_slam_node')
 
         self._setup_output_path(config)
         self.device = "cuda"
@@ -63,6 +67,10 @@ class GaussianSLAM(object):
         self.enable_exposure = self.tracker.enable_exposure
         self.loop_closer = Loop_closure(config, self.dataset, self.logger)
         self.loop_closer.submap_path = self.output_path / "submaps"
+
+        self.queue_size = 100
+        self.msg_counter = 0
+        self.f2g_publisher = self.create_publisher(String,'Front2GUI',self.queue_size)
         
         print('Tracking config')
         pprint.PrettyPrinter().pprint(config["tracking"])
@@ -70,7 +78,13 @@ class GaussianSLAM(object):
         pprint.PrettyPrinter().pprint(config["mapping"])
         print('Loop closure config')
         pprint.PrettyPrinter().pprint(config["lc"])
-        
+
+    def push_to_gui(self):
+        f2g_msg = f'Hello world {self.msg_counter}'
+
+        self.f2g_publisher.publish(f2g_msg)
+        self.msg_counter += 1
+
 
     def _setup_output_path(self, config: dict) -> None:
         """ Sets up the output path for saving results based on the provided configuration. If the output path is not
@@ -271,7 +285,33 @@ class GaussianSLAM(object):
                     self.update_keyframe_poses(lc_output, submaps_kf_ids, frame_id)
             if self.enable_exposure:
                 self.exposures_ab[frame_id] = torch.tensor([exposure_ab[0].item(), exposure_ab[1].item()])
+
+            self.push_to_gui()
         
         save_dict_to_ckpt(self.estimated_c2ws[:frame_id + 1], "estimated_c2w.ckpt", directory=self.output_path)
         if self.enable_exposure:
             save_dict_to_ckpt(self.exposures_ab, "exposures_ab.ckpt", directory=self.output_path)
+
+def spin_thread(node):
+    # Spin the node continuously in a separate thread
+    while rclpy.ok():
+        rclpy.spin_once(node, timeout_sec=0.1)
+
+def main():
+    rclpy.init()
+    config_path = '/root/code/loopsplat_ros_ws/src/loopsplat_ros/loopsplat_ros/configs/TUM_RGBD/rgbd_dataset_freiburg1_desk.yaml'
+    config = load_config(config_path)
+    setup_seed(config["seed"])
+    gslam = GaussianSLAM(config)
+    try:
+        # Start the spin thread for continuously handling callbacks
+        spin_thread_instance = threading.Thread(target=spin_thread, args=(gslam,))
+        spin_thread_instance.start()
+
+        # Run the main logic (this will execute in parallel with message handling)
+        gslam.run()
+        
+    finally:
+        gslam.destroy_node()
+        rclpy.shutdown()
+        spin_thread_instance.join()  # Wait for the spin thread to finish
