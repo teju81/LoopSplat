@@ -60,9 +60,7 @@ o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel.Error)
 
 class SLAM_GUI(Node):
     def __init__(self, params_gui=None):
-        print("constructor1")
         super().__init__('slam_gui_node')
-        print("constructor2")
 
         self.step = 0
         self.process_finished = False
@@ -113,16 +111,14 @@ class SLAM_GUI(Node):
 
         # self.g2f_publisher = self.create_publisher(G2F, '/Gui2Front', self.queue_size_)
 
-        self.f2g_subscriber = self.create_subscription(F2G, '/Front2Gui', self.f2g_listener_callback, self.queue_size_)
+        self.f2g_subscriber = self.create_subscription(F2G, '/Front2GUI', self.f2g_listener_callback, self.queue_size_)
         self.f2g_subscriber  # prevent unused variable warning
-        print("Entering....")
 
 
         self.update_thread = threading.Thread(target=self._update_loop)
         self.update_thread.start()
 
     def init_widget(self):
-        print("init....")
         self.window_w, self.window_h = 1600, 900
 
         self.window = gui.Application.instance.create_window("LoopSplat Map", self.window_w, self.window_h)
@@ -154,7 +150,6 @@ class SLAM_GUI(Node):
 
         bounds = self.widget3d.scene.bounding_box
         self.widget3d.setup_camera(60.0, bounds, bounds.get_center())
-        print("Done....")
         em = self.window.theme.font_size
         margin = 0.5 * em
         self.panel = gui.Vert(0.5 * em, gui.Margins(margin))
@@ -659,7 +654,7 @@ class SLAM_GUI(Node):
                 self.gaussian_cur,
                 self.pipe,
                 self.background,
-                self.scaling_slider.double_value,
+                #self.scaling_slider.double_value,
             )
         if results is None:
             return
@@ -792,9 +787,7 @@ def main():
 
 
     rclpy.init()
-    print("Here 1....")
     gui_node = SLAM_GUI(params_gui)
-    print("Here 2....")
 
     app.run()
     gui_node.destroy_node()

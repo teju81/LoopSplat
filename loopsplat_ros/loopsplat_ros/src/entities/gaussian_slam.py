@@ -10,6 +10,8 @@ import threading
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
+from loopsplat_interfaces.msg import F2G
+
 from loopsplat_ros.src.utils.io_utils import load_config
 
 import numpy as np
@@ -72,7 +74,7 @@ class GaussianSLAM(Node):
 
         self.queue_size = 100
         self.msg_counter = 0
-        self.f2g_publisher = self.create_publisher(String,'Front2GUI',self.queue_size)
+        self.f2g_publisher = self.create_publisher(F2G,'Front2GUI',self.queue_size)
         
         print('Tracking config')
         pprint.PrettyPrinter().pprint(config["tracking"])
@@ -82,8 +84,8 @@ class GaussianSLAM(Node):
         pprint.PrettyPrinter().pprint(config["lc"])
 
     def push_to_gui(self):
-        f2g_msg = String()
-        f2g_msg.data = f'Hello world {self.msg_counter}'
+        f2g_msg = F2G()
+        f2g_msg.msg = f'Hello world {self.msg_counter}'
 
         self.f2g_publisher.publish(f2g_msg)
         self.msg_counter += 1
