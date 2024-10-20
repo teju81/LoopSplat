@@ -111,7 +111,7 @@ class SLAM_GUI(Node):
         self.msg_counter_g2f = 0
 
 
-        self.g2f_publisher = self.create_publisher(G2F, '/Gui2Front', self.queue_size_)
+        # self.g2f_publisher = self.create_publisher(G2F, '/Gui2Front', self.queue_size_)
 
         self.f2g_subscriber = self.create_subscription(F2G, '/Front2Gui', self.f2g_listener_callback, self.queue_size_)
         self.f2g_subscriber  # prevent unused variable warning
@@ -155,9 +155,9 @@ class SLAM_GUI(Node):
         bounds = self.widget3d.scene.bounding_box
         self.widget3d.setup_camera(60.0, bounds, bounds.get_center())
         print("Done....")
-        # em = self.window.theme.font_size
-        # margin = 0.5 * em
-        # self.panel = gui.Vert(0.5 * em, gui.Margins(margin))
+        em = self.window.theme.font_size
+        margin = 0.5 * em
+        self.panel = gui.Vert(0.5 * em, gui.Margins(margin))
         # self.button = gui.ToggleSwitch("Resume/Pause")
         # self.button.is_on = True
         # self.button.set_on_clicked(self._on_button)
