@@ -82,7 +82,8 @@ class GaussianSLAM(Node):
         pprint.PrettyPrinter().pprint(config["lc"])
 
     def push_to_gui(self):
-        f2g_msg = f'Hello world {self.msg_counter}'
+        f2g_msg = String()
+        f2g_msg.data = f'Hello world {self.msg_counter}'
 
         self.f2g_publisher.publish(f2g_msg)
         self.msg_counter += 1
