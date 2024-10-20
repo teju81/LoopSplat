@@ -67,7 +67,7 @@ class Camera(nn.Module):
 
     @staticmethod
     def init_from_dataset(dataset, idx, projection_matrix):
-        gt_color, gt_depth, gt_pose = dataset[idx]
+        _, gt_color, gt_depth, gt_pose = dataset[idx]
         return Camera(
             idx,
             gt_color,
@@ -82,7 +82,7 @@ class Camera(nn.Module):
             dataset.fovy,
             dataset.height,
             dataset.width,
-            device=dataset.device,
+            device="cuda",
         )
 
     @staticmethod

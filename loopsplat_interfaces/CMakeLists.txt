@@ -17,6 +17,8 @@ find_package(std_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/F2G.msg"
+  "msg/CameraMsg.msg"
+  "msg/GaussiansMsg.msg"
   DEPENDENCIES std_msgs
  )
 

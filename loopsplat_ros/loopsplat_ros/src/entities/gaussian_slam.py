@@ -10,7 +10,7 @@ import threading
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
-from loopsplat_interfaces.msg import F2G
+from loopsplat_interfaces.msg import F2G, CameraMsg, GaussiansMsg
 
 from loopsplat_ros.src.utils.io_utils import load_config
 
@@ -20,6 +20,7 @@ import roma
 
 from loopsplat_ros.src.entities.arguments import OptimizationParams
 from loopsplat_ros.src.entities.datasets import get_dataset
+from loopsplat_ros.src.gsr.camera import Camera
 from loopsplat_ros.src.entities.gaussian_model import GaussianModel
 from loopsplat_ros.src.entities.mapper import Mapper
 from loopsplat_ros.src.entities.tracker import Tracker
@@ -28,8 +29,15 @@ from loopsplat_ros.src.entities.logger import Logger
 from loopsplat_ros.src.utils.io_utils import save_dict_to_ckpt, save_dict_to_yaml
 from loopsplat_ros.src.utils.mapper_utils import exceeds_motion_thresholds 
 from loopsplat_ros.src.utils.utils import np2torch, setup_seed, torch2np
+from loopsplat_ros.src.utils.graphics_utils import getProjectionMatrix2 
 from loopsplat_ros.src.utils.vis_utils import *  # noqa - needed for debugging
-
+from loopsplat_ros.src.utils.ros_utils import (
+    convert_ros_array_message_to_tensor, 
+    convert_ros_multi_array_message_to_tensor, 
+    convert_tensor_to_ros_message, 
+    convert_numpy_array_to_ros_message, 
+    convert_ros_multi_array_message_to_numpy, 
+)
 
 class GaussianSLAM(Node):
 
@@ -82,14 +90,6 @@ class GaussianSLAM(Node):
         pprint.PrettyPrinter().pprint(config["mapping"])
         print('Loop closure config')
         pprint.PrettyPrinter().pprint(config["lc"])
-
-    def push_to_gui(self):
-        f2g_msg = F2G()
-        f2g_msg.msg = f'Hello world {self.msg_counter}'
-
-        self.f2g_publisher.publish(f2g_msg)
-        self.msg_counter += 1
-
 
     def _setup_output_path(self, config: dict) -> None:
         """ Sets up the output path for saving results based on the provided configuration. If the output path is not
@@ -291,11 +291,81 @@ class GaussianSLAM(Node):
             if self.enable_exposure:
                 self.exposures_ab[frame_id] = torch.tensor([exposure_ab[0].item(), exposure_ab[1].item()])
 
-            self.push_to_gui()
+            self.publish_message_to_gui(frame_id, gaussian_model)
         
         save_dict_to_ckpt(self.estimated_c2ws[:frame_id + 1], "estimated_c2w.ckpt", directory=self.output_path)
         if self.enable_exposure:
             save_dict_to_ckpt(self.exposures_ab, "exposures_ab.ckpt", directory=self.output_path)
+
+    def publish_message_to_gui(self, frame_id, gaussian_model):
+        f2g_msg = self.convert_to_f2g_ros_msg(frame_id, gaussian_model)
+        f2g_msg.msg = f'Hello world {self.msg_counter}'
+
+        self.f2g_publisher.publish(f2g_msg)
+        self.msg_counter += 1
+
+    def convert_to_f2g_ros_msg(self, frame_id, gaussian_model):
+        
+        f2g_msg = F2G()
+
+
+        f2g_msg.msg = "Sending Gaussian Packets - with Gaussians"
+
+        f2g_msg.active_sh_degree = gaussian_model.active_sh_degree 
+
+        f2g_msg.max_sh_degree = gaussian_model.max_sh_degree
+        f2g_msg.xyz = convert_tensor_to_ros_message(gaussian_model.get_xyz().detach().clone())
+        f2g_msg.features = convert_tensor_to_ros_message(gaussian_model.get_features().detach().clone())
+        f2g_msg.scaling = convert_tensor_to_ros_message(gaussian_model.get_scaling().detach().clone())
+        f2g_msg.rotation = convert_tensor_to_ros_message(gaussian_model.get_rotation().detach().clone())
+        f2g_msg.opacity = convert_tensor_to_ros_message(gaussian_model.get_opacity().detach().clone())
+
+        projection_matrix = getProjectionMatrix2(
+            znear=0.01,
+            zfar=100.0,
+            fx=self.dataset.fx,
+            fy=self.dataset.fy,
+            cx=self.dataset.cx,
+            cy=self.dataset.cy,
+            W=self.dataset.width,
+            H=self.dataset.height,
+        ).transpose(0, 1)
+        projection_matrix = projection_matrix.to(device=self.device)
+
+        viewpoint = Camera.init_from_dataset(self.dataset, frame_id, projection_matrix)
+        f2g_msg.current_frame = self.get_camera_msg_from_viewpoint(viewpoint)
+
+        return f2g_msg
+
+    def get_camera_msg_from_viewpoint(self, viewpoint):
+
+        if viewpoint is None:
+            return None
+
+        viewpoint_msg = CameraMsg()
+        viewpoint_msg.uid = viewpoint.uid
+        viewpoint_msg.device = viewpoint.device
+        viewpoint_msg.rot = convert_tensor_to_ros_message(viewpoint.R)
+        viewpoint_msg.trans = viewpoint.T.tolist()
+        viewpoint_msg.rot_gt = convert_tensor_to_ros_message(viewpoint.R_gt)
+        viewpoint_msg.trans_gt = viewpoint.T_gt.tolist()
+        viewpoint_msg.original_image = convert_tensor_to_ros_message(viewpoint.original_image)
+        viewpoint_msg.depth = convert_numpy_array_to_ros_message(viewpoint.depth)
+        viewpoint_msg.fx = viewpoint.fx
+        viewpoint_msg.fy = viewpoint.fy
+        viewpoint_msg.cx = viewpoint.cx
+        viewpoint_msg.cy = viewpoint.cy
+        viewpoint_msg.fovx = viewpoint.FoVx
+        viewpoint_msg.fovy = viewpoint.FoVy
+        viewpoint_msg.image_width = viewpoint.image_width
+        viewpoint_msg.image_height = viewpoint.image_height
+        viewpoint_msg.cam_rot_delta = viewpoint.cam_rot_delta.tolist()
+        viewpoint_msg.cam_trans_delta = viewpoint.cam_trans_delta.tolist()
+        viewpoint_msg.exposure_a = viewpoint.exposure_a.item()
+        viewpoint_msg.exposure_b = viewpoint.exposure_b.item()
+        viewpoint_msg.projection_matrix = convert_tensor_to_ros_message(viewpoint.projection_matrix)
+
+        return viewpoint_msg
 
 def spin_thread(node):
     # Spin the node continuously in a separate thread
