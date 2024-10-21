@@ -113,7 +113,7 @@ def convert_tensor_to_ros_message(tensor_msg):
 def convert_numpy_array_to_ros_message(np_arr):
     if np_arr.dtype == np.float32 or np_arr.dtype == np.float64:
         ros_multiarray_msg = Float32MultiArray()
-    elif np_arr.dtype == np.int32 or np_arr.dtype == np.int32:
+    elif np_arr.dtype == np.int32 or np_arr.dtype == np.uint8:
         ros_multiarray_msg = Int32MultiArray()
 
     # If empty tensor

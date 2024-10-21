@@ -90,27 +90,27 @@ class GaussianPacket:
         self.has_gaussians = False
         if gaussians is not None:
             self.has_gaussians = True
-            self.get_xyz = gaussians.get_xyz.detach().clone()
+            self.get_xyz = gaussians.get_xyz().detach().clone()
             self.active_sh_degree = gaussians.active_sh_degree
-            self.get_opacity = gaussians.get_opacity.detach().clone()
-            self.get_scaling = gaussians.get_scaling.detach().clone()
-            self.get_rotation = gaussians.get_rotation.detach().clone()
+            self.get_opacity = gaussians.get_opacity().detach().clone()
+            self.get_scaling = gaussians.get_scaling().detach().clone()
+            self.get_rotation = gaussians.get_rotation().detach().clone()
             self.max_sh_degree = gaussians.max_sh_degree
-            self.get_features = gaussians.get_features.detach().clone()
+            self.get_features = gaussians.get_features().detach().clone()
 
-            self._rotation = gaussians._rotation.detach().clone()
-            self.rotation_activation = torch.nn.functional.normalize
-            self.unique_kfIDs = gaussians.unique_kfIDs.clone()
-            self.n_obs = gaussians.n_obs.clone()
+            # self._rotation = gaussians._rotation.detach().clone()
+            # self.rotation_activation = torch.nn.functional.normalize
+        #     self.unique_kfIDs = gaussians.unique_kfIDs.clone()
+        #     self.n_obs = gaussians.n_obs.clone()
 
-        self.keyframe = keyframe
-        self.current_frame = current_frame
-        self.gtcolor = self.resize_img(gtcolor, 320)
-        self.gtdepth = self.resize_img(gtdepth, 320)
-        self.gtnormal = self.resize_img(gtnormal, 320)
-        self.keyframes = keyframes
-        self.finish = finish
-        self.kf_window = kf_window
+        # self.keyframe = keyframe
+        # self.current_frame = current_frame
+        # self.gtcolor = self.resize_img(gtcolor, 320)
+        # self.gtdepth = self.resize_img(gtdepth, 320)
+        # self.gtnormal = self.resize_img(gtnormal, 320)
+        # self.keyframes = keyframes
+        # self.finish = finish
+        # self.kf_window = kf_window
 
     def resize_img(self, img, width):
         if img is None:

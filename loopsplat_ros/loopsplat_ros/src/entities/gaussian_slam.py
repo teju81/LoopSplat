@@ -38,6 +38,14 @@ from loopsplat_ros.src.utils.ros_utils import (
     convert_numpy_array_to_ros_message, 
     convert_ros_multi_array_message_to_numpy, 
 )
+from loopsplat_ros.src.gui.gui_utils import (
+    ParamsGUI,
+    GaussianPacket,
+    Packet_vis2main,
+    create_frustum,
+    cv_gl,
+    get_latest_queue,
+)
 
 class GaussianSLAM(Node):
 
@@ -234,6 +242,7 @@ class GaussianSLAM(Node):
 
         for frame_id in range(len(self.dataset)):
 
+
             if frame_id in [0, 1]:
                 estimated_c2w = self.dataset[frame_id][-1]
                 exposure_ab = torch.nn.Parameter(torch.tensor(
@@ -308,18 +317,6 @@ class GaussianSLAM(Node):
         
         f2g_msg = F2G()
 
-
-        f2g_msg.msg = "Sending Gaussian Packets - with Gaussians"
-
-        f2g_msg.active_sh_degree = gaussian_model.active_sh_degree 
-
-        f2g_msg.max_sh_degree = gaussian_model.max_sh_degree
-        f2g_msg.xyz = convert_tensor_to_ros_message(gaussian_model.get_xyz().detach().clone())
-        f2g_msg.features = convert_tensor_to_ros_message(gaussian_model.get_features().detach().clone())
-        f2g_msg.scaling = convert_tensor_to_ros_message(gaussian_model.get_scaling().detach().clone())
-        f2g_msg.rotation = convert_tensor_to_ros_message(gaussian_model.get_rotation().detach().clone())
-        f2g_msg.opacity = convert_tensor_to_ros_message(gaussian_model.get_opacity().detach().clone())
-
         projection_matrix = getProjectionMatrix2(
             znear=0.01,
             zfar=100.0,
@@ -332,8 +329,20 @@ class GaussianSLAM(Node):
         ).transpose(0, 1)
         projection_matrix = projection_matrix.to(device=self.device)
 
-        viewpoint = Camera.init_from_dataset(self.dataset, frame_id, projection_matrix)
-        f2g_msg.current_frame = self.get_camera_msg_from_viewpoint(viewpoint)
+        current_frame = Camera.init_from_dataset(self.dataset, frame_id, projection_matrix)
+        f2g_msg.current_frame = self.get_camera_msg_from_viewpoint(current_frame)
+
+        f2g_msg.msg = "Sending Gaussian Packets - with Gaussians"
+        f2g_msg.has_gaussians = True
+        f2g_msg.active_sh_degree = gaussian_model.active_sh_degree 
+
+        f2g_msg.max_sh_degree = gaussian_model.max_sh_degree
+        f2g_msg.xyz = convert_tensor_to_ros_message(gaussian_model.get_xyz().detach().clone())
+        f2g_msg.features_dc = convert_tensor_to_ros_message(gaussian_model.get_dc_features().detach().clone())
+        f2g_msg.features_rest = convert_tensor_to_ros_message(gaussian_model.get_non_dc_features().detach().clone())
+        f2g_msg.scaling = convert_tensor_to_ros_message(gaussian_model.get_scaling().detach().clone())
+        f2g_msg.rotation = convert_tensor_to_ros_message(gaussian_model.get_rotation().detach().clone())
+        f2g_msg.opacity = convert_tensor_to_ros_message(gaussian_model.get_opacity().detach().clone())
 
         return f2g_msg
 
@@ -347,9 +356,9 @@ class GaussianSLAM(Node):
         viewpoint_msg.device = viewpoint.device
         viewpoint_msg.rot = convert_tensor_to_ros_message(viewpoint.R)
         viewpoint_msg.trans = viewpoint.T.tolist()
-        viewpoint_msg.rot_gt = convert_tensor_to_ros_message(viewpoint.R_gt)
+        viewpoint_msg.rot_gt = convert_numpy_array_to_ros_message(viewpoint.R_gt)
         viewpoint_msg.trans_gt = viewpoint.T_gt.tolist()
-        viewpoint_msg.original_image = convert_tensor_to_ros_message(viewpoint.original_image)
+        viewpoint_msg.original_image = convert_numpy_array_to_ros_message(viewpoint.original_image)
         viewpoint_msg.depth = convert_numpy_array_to_ros_message(viewpoint.depth)
         viewpoint_msg.fx = viewpoint.fx
         viewpoint_msg.fy = viewpoint.fy

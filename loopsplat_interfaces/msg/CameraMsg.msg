@@ -4,7 +4,7 @@ std_msgs/Float32MultiArray rot
 float32[] trans
 std_msgs/Float32MultiArray rot_gt
 float32[] trans_gt
-std_msgs/Float32MultiArray original_image
+std_msgs/Int32MultiArray original_image
 std_msgs/Float32MultiArray depth
 float32 fx
 float32 fy

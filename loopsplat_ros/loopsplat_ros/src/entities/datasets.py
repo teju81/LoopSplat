@@ -166,6 +166,7 @@ class TUM_RGBD(BaseDataset):
             color_data = color_data[edge:-edge, edge:-edge]
             depth_data = depth_data[edge:-edge, edge:-edge]
         # Interpolate depth values for splatting
+        # print(self.poses[index])
         return index, color_data, depth_data, self.poses[index]
 
 

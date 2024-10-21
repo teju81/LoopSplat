@@ -14,16 +14,18 @@ from loopsplat_interfaces.msg import F2G
 # from monogs_ros.gaussian_splatting.utils.graphics_utils import getProjectionMatrix2
 
 import yaml
+from munch import munchify
+
 from loopsplat_ros.src.utils.utils import np2torch, setup_seed, torch2np
 
 from loopsplat_ros.src.utils.io_utils import load_config
-# from monogs_ros.utils.ros_utils import (
-#     convert_ros_array_message_to_tensor, 
-#     convert_ros_multi_array_message_to_tensor, 
-#     convert_tensor_to_ros_message, 
-#     convert_numpy_array_to_ros_message, 
-#     convert_ros_multi_array_message_to_numpy, 
-# )
+from loopsplat_ros.src.utils.ros_utils import (
+    convert_ros_array_message_to_tensor, 
+    convert_ros_multi_array_message_to_tensor, 
+    convert_tensor_to_ros_message, 
+    convert_numpy_array_to_ros_message, 
+    convert_ros_multi_array_message_to_numpy, 
+)
 
 # from munch import munchify
 from loopsplat_ros.src.entities.gaussian_model import GaussianModel
@@ -44,6 +46,7 @@ from loopsplat_ros.src.utils.graphics_utils import fov2focal
 # from monogs_ros.gaussian_splatting.utils.graphics_utils import fov2focal, getWorld2View2
 # from monogs_ros.gui.gl_render import util, util_gau
 # from monogs_ros.gui.gl_render.render_ogl import OpenGLRenderer
+
 from loopsplat_ros.src.gui.gui_utils import (
     ParamsGUI,
     GaussianPacket,
@@ -494,6 +497,7 @@ class SLAM_GUI(Node):
 
     def get_current_cam(self):
         w2c = cv_gl @ self.widget3d.scene.camera.get_view_matrix()
+        print(w2c)
 
         image_gui = torch.zeros(
             (1, int(self.window.size.height), int(self.widget3d_width))
@@ -506,7 +510,8 @@ class SLAM_GUI(Node):
         fy = fov2focal(FoVy, image_gui.shape[1])
         cx = image_gui.shape[2] // 2
         cy = image_gui.shape[1] // 2
-        T = torch.from_numpy(w2c)
+        # T = torch.from_numpy(w2c)
+        T = torch.eye(4)
         current_cam = Camera.init_from_gui(
             uid=-1,
             T=T,
@@ -648,6 +653,7 @@ class SLAM_GUI(Node):
         if not self.init:
             return
         current_cam = self.get_current_cam()
+        print(current_cam.get_T)
         #results = self.rasterise(current_cam)
         results = render(
                 current_cam,
@@ -661,24 +667,136 @@ class SLAM_GUI(Node):
         self.render_img = self.render_o3d_image(results, current_cam)
         self.widget3d.scene.set_background([0, 0, 0, 1], self.render_img)
 
+    def get_viewpoint_from_cam_msg(self, cam_msg):
+
+        cur_frame_idx = cam_msg.uid
+        device = cam_msg.device
+
+        gt_pose = torch.eye(4, device=device)
+        gt_pose[:3,:3] = convert_ros_multi_array_message_to_tensor(cam_msg.rot_gt, device)
+        gt_pose[:3,3] = convert_ros_array_message_to_tensor(cam_msg.trans_gt, device)
+
+        gt_color = convert_ros_multi_array_message_to_tensor(cam_msg.original_image, device)
+        gt_depth = convert_ros_multi_array_message_to_numpy(cam_msg.depth)
+        fx = cam_msg.fx
+        fy = cam_msg.fy
+        cx = cam_msg.cx
+        cy = cam_msg.cy
+        fovx = cam_msg.fovx
+        fovy = cam_msg.fovy
+        image_width = cam_msg.image_width
+        image_height = cam_msg.image_height
+
+
+        projection_matrix = getProjectionMatrix2(
+            znear=0.01,
+            zfar=100.0,
+            fx=fx,
+            fy=fy,
+            cx=cx,
+            cy=cy,
+            W=image_width,
+            H=image_height,
+        ).transpose(0, 1)
+        projection_matrix = projection_matrix.to(device=device)
+
+        viewpoint = Camera(
+            cur_frame_idx,
+            gt_color,
+            gt_depth,
+            gt_pose,
+            projection_matrix,
+            fx,
+            fy,
+            cx,
+            cy,
+            fovx,
+            fovy,
+            image_height,
+            image_width,
+            device=device,
+        )
+
+        viewpoint.uid = cam_msg.uid
+        viewpoint.R = convert_ros_multi_array_message_to_tensor(cam_msg.rot, device)
+        viewpoint.T = convert_ros_array_message_to_tensor(cam_msg.trans, device)
+        viewpoint.cam_rot_delta = nn.Parameter(convert_ros_array_message_to_tensor(cam_msg.cam_rot_delta, device).requires_grad_(True))
+        viewpoint.cam_trans_delta = nn.Parameter(convert_ros_array_message_to_tensor(cam_msg.cam_trans_delta, device).requires_grad_(True))
+        viewpoint.exposure_a = nn.Parameter(torch.tensor(cam_msg.exposure_a, requires_grad=True, device=device))
+        viewpoint.exposure_b = nn.Parameter(torch.tensor(cam_msg.exposure_b, requires_grad=True, device=device))
+        viewpoint.projection_matrix = convert_ros_multi_array_message_to_tensor(cam_msg.projection_matrix, device)
+        viewpoint.R_gt = convert_ros_multi_array_message_to_tensor(cam_msg.rot_gt, device)
+        viewpoint.T_gt = convert_ros_array_message_to_tensor(cam_msg.trans_gt, device)
+
+        viewpoint.original_image = convert_ros_multi_array_message_to_tensor(cam_msg.original_image, device)
+        viewpoint.depth = convert_ros_multi_array_message_to_numpy(cam_msg.depth)
+        viewpoint.fx = cam_msg.fx
+        viewpoint.fy = cam_msg.fy
+        viewpoint.cx = cam_msg.cx
+        viewpoint.cy = cam_msg.cy
+        viewpoint.FoVx = cam_msg.fovx
+        viewpoint.FoVy = cam_msg.fovy
+        viewpoint.image_width = cam_msg.image_width
+        viewpoint.image_height = cam_msg.image_height
+        viewpoint.device = cam_msg.device
+
+        return viewpoint
+
+    def convert_from_f2g_ros_msg(self, f2g_msg):
+        gaussian_cur = GaussianModel(0)
+
+        if f2g_msg.has_gaussians:
+            gaussian_cur.active_sh_degree = f2g_msg.active_sh_degree
+            gaussian_cur.max_sh_degree = f2g_msg.max_sh_degree
+
+            gaussian_cur._xyz = convert_ros_multi_array_message_to_tensor(f2g_msg.xyz, self.device)
+            gaussian_cur._features_dc = convert_ros_multi_array_message_to_tensor(f2g_msg.features_dc, self.device)
+            gaussian_cur._features_rest = convert_ros_multi_array_message_to_tensor(f2g_msg.features_rest, self.device)
+            gaussian_cur._scaling = convert_ros_multi_array_message_to_tensor(f2g_msg.scaling, self.device)
+            gaussian_cur._rotation = convert_ros_multi_array_message_to_tensor(f2g_msg.rotation, self.device)
+            gaussian_cur._opacity = convert_ros_multi_array_message_to_tensor(f2g_msg.opacity, self.device)
+
+
+            # gaussian_packet.unique_kfIDs = convert_ros_array_message_to_tensor(f2g_msg.unique_kfids, self.device)
+            # gaussian_packet.n_obs = convert_ros_array_message_to_tensor(f2g_msg.n_obs, self.device)
+
+        # if f2g_msg.gtcolor is not None:
+        #     gaussian_packet.gtcolor = convert_ros_multi_array_message_to_tensor(f2g_msg.gtcolor, self.device)
+        # gaussian_packet.gtdepth = convert_ros_multi_array_message_to_numpy(f2g_msg.gtdepth)
+
+
+        # gaussian_packet.current_frame = self.get_viewpoint_from_cam_msg(f2g_msg.current_frame)
+
+        # gaussian_packet.keyframes =[]
+        # for keyframe in f2g_msg.keyframes:
+        #     gaussian_packet.keyframes.append(self.get_viewpoint_from_cam_msg(keyframe))
+
+        # gaussian_packet.finish = f2g_msg.finish
+
+        # gaussian_packet.kf_window = {f2g_msg.kf_window.idx: f2g_msg.kf_window.current_window}
+
+        return gaussian_cur
 
     def f2g_listener_callback(self, f2g_msg):
         self.get_logger().info('I heard from frontend: %s' % f2g_msg.msg)
 
         self.received_f2g_msg = True
 
-        # gaussian_packet = self.convert_from_ros_message(f2g_msg)
+
+        self.gaussian_cur = self.convert_from_f2g_ros_msg(f2g_msg)
+        self.init = True
+
 
         # if gaussian_packet is None:
         #     return
         # #Log("Rxd Gaussian Packets", tag="GUI")
 
         # if gaussian_packet.has_gaussians:
-        #     self.gaussian_cur = gaussian_packet
-        #     self.output_info.text = "Number of Gaussians: {}".format(
-        #         self.gaussian_cur.get_xyz.shape[0]
-        #     )
-        #     self.init = True
+            # self.gaussian_cur = gaussian_packet
+            # self.output_info.text = "Number of Gaussians: {}".format(
+            #     self.gaussian_cur.get_xyz.shape[0]
+            # )
+            # self.init = True
 
         # if gaussian_packet.current_frame is not None:
         #     frustum = self.add_camera(
@@ -771,8 +889,8 @@ def main():
     config = load_config(config_path)
     setup_seed(config["seed"])
 
-    pipeline_params = config["pipeline_params"]
-    model_params = config["model_params"]
+    pipeline_params = munchify(config["pipeline_params"])
+    model_params = munchify(config["model_params"])
     bg_color = [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
 

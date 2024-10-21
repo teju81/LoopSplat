@@ -1,8 +1,10 @@
 string msg
+bool has_gaussians
 uint8 active_sh_degree
 uint8 max_sh_degree
 std_msgs/Float32MultiArray xyz
-std_msgs/Float32MultiArray features
+std_msgs/Float32MultiArray features_dc
+std_msgs/Float32MultiArray features_rest
 std_msgs/Float32MultiArray scaling
 std_msgs/Float32MultiArray rotation
 std_msgs/Float32MultiArray opacity

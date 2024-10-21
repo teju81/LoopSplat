@@ -110,6 +110,12 @@ class GaussianModel:
     def get_xyz(self):
         return self._xyz
 
+    def get_dc_features(self):
+        return self._features_dc
+
+    def get_non_dc_features(self):
+        return self._features_rest
+
     def get_features(self):
         features_dc = self._features_dc
         features_rest = self._features_rest
