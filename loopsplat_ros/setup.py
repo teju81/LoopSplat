@@ -25,7 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'gaussian_slam = loopsplat_ros.src.entities.gaussian_slam:main',
-            'slam_gui = loopsplat_ros.src.gui.slam_gui:main',
+            'slam_gui = loopsplat_ros.src.gui.slam_gui_proxy:main',
         ],
     },
 )

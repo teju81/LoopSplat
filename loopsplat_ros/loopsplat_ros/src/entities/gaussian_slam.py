@@ -1,6 +1,8 @@
 """ This module includes the Gaussian-SLAM class, which is responsible for controlling Mapper and Tracker
     It also decides when to start a new submap and when to update the estimated camera poses.
 """
+import time
+import math
 import os
 import pprint
 from argparse import ArgumentParser
@@ -46,6 +48,11 @@ from loopsplat_ros.src.gui.gui_utils import (
     cv_gl,
     get_latest_queue,
 )
+from diff_gaussian_rasterization import GaussianRasterizationSettings
+from loopsplat_ros.src.utils.utils import render_gaussian_model
+from munch import munchify
+# from loopsplat_ros.utils.multiprocessing_utils import clone_obj
+
 
 class GaussianSLAM(Node):
 
@@ -55,6 +62,8 @@ class GaussianSLAM(Node):
         self._setup_output_path(config)
         self.device = "cuda"
         self.config = config
+        self.pipeline_params = munchify(config["pipeline_params"])
+        self.gaussian_map = {}
 
         self.scene_name = config["data"]["scene_name"]
         self.dataset_name = config["dataset_name"]
@@ -232,7 +241,7 @@ class GaussianSLAM(Node):
             submap_ckpt["gaussian_params"] = updated_gaussian_params
             torch.save(submap_ckpt, self.output_path / "submaps" / submap_ckpt_name)
         return submaps_kf_ids
-    
+
     def run(self) -> None:
         """ Starts the main program flow for Gaussian-SLAM, including tracking and mapping. """
         setup_seed(self.config["seed"])
@@ -270,6 +279,7 @@ class GaussianSLAM(Node):
                     self.update_keyframe_poses(lc_output, submaps_kf_ids, frame_id)
                 
                 save_dict_to_ckpt(self.estimated_c2ws[:frame_id + 1], "estimated_c2w.ckpt", directory=self.output_path)
+                self.gaussian_map[self.submap_id] = gaussian_model
                 
                 gaussian_model = self.start_new_submap(frame_id, gaussian_model)
 
@@ -309,6 +319,8 @@ class GaussianSLAM(Node):
     def publish_message_to_gui(self, frame_id, gaussian_model):
         f2g_msg = self.convert_to_f2g_ros_msg(frame_id, gaussian_model)
         f2g_msg.msg = f'Hello world {self.msg_counter}'
+        self.get_logger().info(f'Publishing to GUI Node: {self.msg_counter}')
+
 
         self.f2g_publisher.publish(f2g_msg)
         self.msg_counter += 1
@@ -332,17 +344,17 @@ class GaussianSLAM(Node):
         current_frame = Camera.init_from_dataset(self.dataset, frame_id, projection_matrix)
         f2g_msg.current_frame = self.get_camera_msg_from_viewpoint(current_frame)
 
-        f2g_msg.msg = "Sending Gaussian Packets - with Gaussians"
+        f2g_msg.msg = "Sending 3D Gaussians"
         f2g_msg.has_gaussians = True
         f2g_msg.active_sh_degree = gaussian_model.active_sh_degree 
 
         f2g_msg.max_sh_degree = gaussian_model.max_sh_degree
-        f2g_msg.xyz = convert_tensor_to_ros_message(gaussian_model.get_xyz().detach().clone())
-        f2g_msg.features_dc = convert_tensor_to_ros_message(gaussian_model.get_dc_features().detach().clone())
-        f2g_msg.features_rest = convert_tensor_to_ros_message(gaussian_model.get_non_dc_features().detach().clone())
-        f2g_msg.scaling = convert_tensor_to_ros_message(gaussian_model.get_scaling().detach().clone())
-        f2g_msg.rotation = convert_tensor_to_ros_message(gaussian_model.get_rotation().detach().clone())
-        f2g_msg.opacity = convert_tensor_to_ros_message(gaussian_model.get_opacity().detach().clone())
+        f2g_msg.xyz = convert_numpy_array_to_ros_message(gaussian_model.get_xyz().detach().clone().cpu().numpy())
+        f2g_msg.features_dc = convert_numpy_array_to_ros_message(gaussian_model.get_dc_features().detach().clone().cpu().numpy())
+        f2g_msg.features_rest = convert_numpy_array_to_ros_message(gaussian_model.get_non_dc_features().detach().clone().cpu().numpy())
+        f2g_msg.scaling = convert_numpy_array_to_ros_message(gaussian_model.get_scaling().detach().clone().cpu().numpy())
+        f2g_msg.rotation = convert_numpy_array_to_ros_message(gaussian_model.get_rotation().detach().clone().cpu().numpy())
+        f2g_msg.opacity = convert_numpy_array_to_ros_message(gaussian_model.get_opacity().detach().clone().cpu().numpy())
 
         return f2g_msg
 

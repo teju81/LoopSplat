@@ -34,7 +34,7 @@ def getWorld2View2(R, t, translate=torch.tensor([0.0, 0.0, 0.0]), scale=1.0):
     translate = translate.to(R.device)
     Rt = torch.zeros((4, 4), device=R.device)
     # Rt[:3, :3] = R.transpose()
-    print(R)
+    #print(R)
     Rt[:3, :3] = R
     Rt[:3, 3] = t
     Rt[3, 3] = 1.0

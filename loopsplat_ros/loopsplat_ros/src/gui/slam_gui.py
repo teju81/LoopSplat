@@ -11,7 +11,7 @@ from torch import nn
 from std_msgs.msg import String, Float32MultiArray, Int32MultiArray, MultiArrayDimension
 from loopsplat_interfaces.msg import F2G
 
-# from monogs_ros.gaussian_splatting.utils.graphics_utils import getProjectionMatrix2
+from loopsplat_ros.src.utils.graphics_utils import getProjectionMatrix2, getWorld2View2
 
 import yaml
 from munch import munchify
@@ -57,6 +57,10 @@ from loopsplat_ros.src.gui.gui_utils import (
 )
 from loopsplat_ros.src.gsr.camera import Camera
 # from monogs_ros.utils.logging_utils import Log
+
+from loopsplat_ros.src.utils.utils import render_gaussian_model
+from diff_gaussian_rasterization import GaussianRasterizationSettings
+import math
 
 o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel.Error)
 
@@ -294,25 +298,26 @@ class SLAM_GUI(Node):
     #     self.g_renderer.update_camera_intrin(self.g_camera)
     #     self.g_renderer.set_render_reso(self.g_camera.w, self.g_camera.h)
 
-    # def add_camera(self, camera, name, color=[0, 1, 0], gt=False, size=0.01):
-    #     W2C = (
-    #         getWorld2View2(camera.R_gt, camera.T_gt)
-    #         if gt
-    #         else getWorld2View2(camera.R, camera.T)
-    #     )
-    #     W2C = W2C.cpu().numpy()
-    #     C2W = np.linalg.inv(W2C)
-    #     frustum = create_frustum(C2W, color, size=size)
-    #     if name not in self.frustum_dict.keys():
-    #         frustum = create_frustum(C2W, color)
-    #         self.combo_kf.add_item(name)
-    #         self.frustum_dict[name] = frustum
-    #         self.widget3d.scene.add_geometry(name, frustum.line_set, self.lit)
-    #     frustum = self.frustum_dict[name]
-    #     frustum.update_pose(C2W)
-    #     self.widget3d.scene.set_geometry_transform(name, C2W.astype(np.float64))
-    #     self.widget3d.scene.show_geometry(name, self.cameras_chbox.checked)
-    #     return frustum
+    def add_camera(self, camera, name, color=[0, 1, 0], gt=False, size=0.01):
+        W2C = (
+            getWorld2View2(camera.R_gt, camera.T_gt)
+            if gt
+            else getWorld2View2(camera.R, camera.T)
+        )
+        W2C = W2C.cpu().numpy()
+        C2W = np.linalg.inv(W2C)
+        frustum = create_frustum(C2W, color, size=size)
+        if name not in self.frustum_dict.keys():
+            frustum = create_frustum(C2W, color)
+            #self.combo_kf.add_item(name)
+            self.frustum_dict[name] = frustum
+            self.widget3d.scene.add_geometry(name, frustum.line_set, self.lit)
+        frustum = self.frustum_dict[name]
+        frustum.update_pose(C2W)
+        self.widget3d.scene.set_geometry_transform(name, C2W.astype(np.float64))
+        #self.widget3d.scene.show_geometry(name, self.cameras_chbox.checked)
+        self.widget3d.scene.show_geometry(name, True)
+        return frustum
 
     def _on_layout(self, layout_context):
         contentRect = self.window.content_rect
@@ -345,11 +350,11 @@ class SLAM_GUI(Node):
     #     model_idx = self.model_dict[new_val]
     #     self.global_map.active_map_idx = model_idx
 
-    # def _on_combo_kf(self, new_val, new_idx):
-    #     frustum = self.frustum_dict[new_val]
-    #     viewpoint = frustum.view_dir
+    def _on_combo_kf(self, new_val, new_idx):
+        frustum = self.frustum_dict[new_val]
+        viewpoint = frustum.view_dir
 
-    #     self.widget3d.look_at(viewpoint[0], viewpoint[1], viewpoint[2])
+        self.widget3d.look_at(viewpoint[0], viewpoint[1], viewpoint[2])
 
     # def _on_cameras_chbox(self, is_checked, name=None):
     #     names = self.frustum_dict.keys() if name is None else [name]
@@ -497,7 +502,6 @@ class SLAM_GUI(Node):
 
     def get_current_cam(self):
         w2c = cv_gl @ self.widget3d.scene.camera.get_view_matrix()
-        print(w2c)
 
         image_gui = torch.zeros(
             (1, int(self.window.size.height), int(self.widget3d_width))
@@ -510,8 +514,7 @@ class SLAM_GUI(Node):
         fy = fov2focal(FoVy, image_gui.shape[1])
         cx = image_gui.shape[2] // 2
         cy = image_gui.shape[1] // 2
-        # T = torch.from_numpy(w2c)
-        T = torch.eye(4)
+        T = torch.from_numpy(w2c)
         current_cam = Camera.init_from_gui(
             uid=-1,
             T=T,
@@ -653,15 +656,38 @@ class SLAM_GUI(Node):
         if not self.init:
             return
         current_cam = self.get_current_cam()
-        print(current_cam.get_T)
         #results = self.rasterise(current_cam)
-        results = render(
-                current_cam,
-                self.gaussian_cur,
-                self.pipe,
-                self.background,
-                #self.scaling_slider.double_value,
-            )
+        # results = render(
+        #         current_cam,
+        #         self.gaussian_cur,
+        #         self.pipe,
+        #         self.background,
+        #         #self.scaling_slider.double_value,
+        #     )
+
+
+        # results = None
+        # Set up rasterization configuration
+        tanfovx = math.tan(current_cam.FoVx * 0.5)
+        tanfovy = math.tan(current_cam.FoVy * 0.5)
+        raster_settings = GaussianRasterizationSettings(
+            image_height=int(current_cam.image_height),
+            image_width=int(current_cam.image_width),
+            tanfovx=tanfovx,
+            tanfovy=tanfovy,
+            bg=self.background,
+            scale_modifier=1.0,
+            viewmatrix=current_cam.world_view_transform,
+            projmatrix=current_cam.full_proj_transform,
+            projmatrix_raw=current_cam.projection_matrix,
+            sh_degree=self.gaussian_cur.active_sh_degree,
+            campos=current_cam.camera_center,
+            prefiltered=False,
+            debug=False,
+        )
+        results = render_gaussian_model(self.gaussian_cur, raster_settings)
+
+        print("Done rendering...")
         if results is None:
             return
         self.render_img = self.render_o3d_image(results, current_cam)
@@ -765,7 +791,7 @@ class SLAM_GUI(Node):
         # gaussian_packet.gtdepth = convert_ros_multi_array_message_to_numpy(f2g_msg.gtdepth)
 
 
-        # gaussian_packet.current_frame = self.get_viewpoint_from_cam_msg(f2g_msg.current_frame)
+        current_frame = self.get_viewpoint_from_cam_msg(f2g_msg.current_frame)
 
         # gaussian_packet.keyframes =[]
         # for keyframe in f2g_msg.keyframes:
@@ -775,7 +801,7 @@ class SLAM_GUI(Node):
 
         # gaussian_packet.kf_window = {f2g_msg.kf_window.idx: f2g_msg.kf_window.current_window}
 
-        return gaussian_cur
+        return current_frame, gaussian_cur
 
     def f2g_listener_callback(self, f2g_msg):
         self.get_logger().info('I heard from frontend: %s' % f2g_msg.msg)
@@ -783,7 +809,7 @@ class SLAM_GUI(Node):
         self.received_f2g_msg = True
 
 
-        self.gaussian_cur = self.convert_from_f2g_ros_msg(f2g_msg)
+        current_frame, self.gaussian_cur = self.convert_from_f2g_ros_msg(f2g_msg)
         self.init = True
 
 
@@ -798,17 +824,13 @@ class SLAM_GUI(Node):
             # )
             # self.init = True
 
-        # if gaussian_packet.current_frame is not None:
-        #     frustum = self.add_camera(
-        #         gaussian_packet.current_frame, name="current", color=[0, 1, 0]
-        #     )
-        #     if self.followcam_chbox.checked:
-        #         viewpoint = (
-        #             frustum.view_dir_behind
-        #             if self.staybehind_chbox.checked
-        #             else frustum.view_dir
-        #         )
-        #         self.widget3d.look_at(viewpoint[0], viewpoint[1], viewpoint[2])
+        if current_frame is not None:
+            frustum = self.add_camera(
+                current_frame, name="current", color=[0, 1, 0]
+            )
+
+            viewpoint = (frustum.view_dir_behind)
+            self.widget3d.look_at(viewpoint[0], viewpoint[1], viewpoint[2])
 
         # if gaussian_packet.keyframe is not None:
         #     name = "keyframe_{}".format(gaussian_packet.keyframe.uid)
