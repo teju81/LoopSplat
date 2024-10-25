@@ -31,7 +31,7 @@ from loopsplat_ros.src.utils.ros_utils import (
 from loopsplat_ros.src.entities.gaussian_model import GaussianModel
 
 # import cv2
-# import glfw
+import glfw
 import imgviz
 import numpy as np
 import open3d as o3d
@@ -39,13 +39,12 @@ import open3d.visualization.gui as gui
 import open3d.visualization.rendering as rendering
 import torch
 import torch.nn.functional as F
-# from OpenGL import GL as gl
+from OpenGL import GL as gl
 
 from loopsplat_ros.src.gsr.renderer import render
 from loopsplat_ros.src.utils.graphics_utils import fov2focal
-# from monogs_ros.gaussian_splatting.utils.graphics_utils import fov2focal, getWorld2View2
-# from monogs_ros.gui.gl_render import util, util_gau
-# from monogs_ros.gui.gl_render.render_ogl import OpenGLRenderer
+from loopsplat_ros.src.gui.gl_render import util, util_gau
+from loopsplat_ros.src.gui.gl_render.render_ogl import OpenGLRenderer
 
 from loopsplat_ros.src.gui.gui_utils import (
     ParamsGUI,
@@ -56,7 +55,7 @@ from loopsplat_ros.src.gui.gui_utils import (
     get_latest_queue,
 )
 from loopsplat_ros.src.gsr.camera import Camera
-# from monogs_ros.utils.logging_utils import Log
+# from loopsplat_ros.src.utils.logging_utils import Log
 
 from loopsplat_ros.src.utils.utils import render_gaussian_model
 from diff_gaussian_rasterization import GaussianRasterizationSettings
@@ -107,6 +106,7 @@ class SLAM_GUI(Node):
         # gl.glEnable(gl.GL_TEXTURE_2D)
         # gl.glEnable(gl.GL_DEPTH_TEST)
         # gl.glDepthFunc(gl.GL_LEQUAL)
+
         # self.gaussians_gl = util_gau.GaussianData(0, 0, 0, 0, 0)
 
         # self.save_path = "."
@@ -276,32 +276,32 @@ class SLAM_GUI(Node):
         self.window.add_child(self.panel)
 
 
-    # def init_glfw(self):
-    #     window_name = "headless rendering"
+    def init_glfw(self):
+        window_name = "headless rendering"
 
-    #     if not glfw.init():
-    #         exit(1)
+        if not glfw.init():
+            exit(1)
 
-    #     glfw.window_hint(glfw.VISIBLE, glfw.FALSE)
+        glfw.window_hint(glfw.VISIBLE, glfw.FALSE)
 
-    #     window = glfw.create_window(
-    #         self.window_w, self.window_h, window_name, None, None
-    #     )
-    #     glfw.make_context_current(window)
-    #     glfw.swap_interval(0)
-    #     if not window:
-    #         glfw.terminate()
-    #         exit(1)
-    #     return window
+        window = glfw.create_window(
+            self.window_w, self.window_h, window_name, None, None
+        )
+        glfw.make_context_current(window)
+        glfw.swap_interval(0)
+        if not window:
+            glfw.terminate()
+            exit(1)
+        return window
 
-    # def update_activated_renderer_state(self, gaus):
-    #     self.g_renderer.update_gaussian_data(gaus)
-    #     self.g_renderer.sort_and_update(self.g_camera)
-    #     self.g_renderer.set_scale_modifier(self.scaling_slider.double_value)
-    #     self.g_renderer.set_render_mod(-4)
-    #     self.g_renderer.update_camera_pose(self.g_camera)
-    #     self.g_renderer.update_camera_intrin(self.g_camera)
-    #     self.g_renderer.set_render_reso(self.g_camera.w, self.g_camera.h)
+    def update_activated_renderer_state(self, gaus):
+        self.g_renderer.update_gaussian_data(gaus)
+        self.g_renderer.sort_and_update(self.g_camera)
+        self.g_renderer.set_scale_modifier(self.scaling_slider.double_value)
+        self.g_renderer.set_render_mod(-4)
+        self.g_renderer.update_camera_pose(self.g_camera)
+        self.g_renderer.update_camera_intrin(self.g_camera)
+        self.g_renderer.set_render_reso(self.g_camera.w, self.g_camera.h)
 
     def add_camera(self, camera, name, color=[0, 1, 0], gt=False, size=0.01):
         W2C = (

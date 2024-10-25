@@ -65,7 +65,7 @@ class OpenGLRenderer(GaussianRenderBase):
     def __init__(self, w, h):
         super().__init__()
         gl.glViewport(0, 0, w, h)
-        cur_path = '/root/code/monogs_ros_ws/src/monogs_ros/monogs_ros/gui/gl_render' #os.path.dirname(os.path.abspath(__file__))
+        cur_path = '/root/code/loopsplat_ros_ws/src/loopsplat_ros/loopsplat_ros/src/gui/gl_render' #os.path.dirname(os.path.abspath(__file__))
         self.program = util.load_shaders(
             os.path.join(cur_path, "shaders/gau_vert.glsl"),
             os.path.join(cur_path, "shaders/gau_frag.glsl"),
