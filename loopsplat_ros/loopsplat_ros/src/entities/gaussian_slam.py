@@ -51,7 +51,7 @@ from loopsplat_ros.src.gui.gui_utils import (
 from diff_gaussian_rasterization import GaussianRasterizationSettings
 from loopsplat_ros.src.utils.utils import render_gaussian_model
 from munch import munchify
-# from loopsplat_ros.utils.multiprocessing_utils import clone_obj
+from loopsplat_ros.src.utils.multiprocessing_utils import clone_obj
 
 
 class GaussianSLAM(Node):
@@ -249,6 +249,18 @@ class GaussianSLAM(Node):
         gaussian_model.training_setup(self.opt)
         self.submap_id = 0
 
+        projection_matrix = getProjectionMatrix2(
+            znear=0.01,
+            zfar=100.0,
+            fx=self.dataset.fx,
+            fy=self.dataset.fy,
+            cx=self.dataset.cx,
+            cy=self.dataset.cy,
+            W=self.dataset.width,
+            H=self.dataset.height,
+        ).transpose(0, 1)
+        projection_matrix = projection_matrix.to(device="cuda")
+
         for frame_id in range(len(self.dataset)):
 
 
@@ -310,14 +322,21 @@ class GaussianSLAM(Node):
             if self.enable_exposure:
                 self.exposures_ab[frame_id] = torch.tensor([exposure_ab[0].item(), exposure_ab[1].item()])
 
-            self.publish_message_to_gui(frame_id, gaussian_model)
+            current_frame = Camera.init_from_dataset(self.dataset, frame_id, projection_matrix)
+            gaussian_packet = GaussianPacket(
+                gaussians=clone_obj(gaussian_model),
+                current_frame=current_frame,
+                gtcolor=current_frame.original_image,
+                gtdepth=current_frame.depth
+            )
+            self.publish_message_to_gui(gaussian_packet)
         
         save_dict_to_ckpt(self.estimated_c2ws[:frame_id + 1], "estimated_c2w.ckpt", directory=self.output_path)
         if self.enable_exposure:
             save_dict_to_ckpt(self.exposures_ab, "exposures_ab.ckpt", directory=self.output_path)
 
-    def publish_message_to_gui(self, frame_id, gaussian_model):
-        f2g_msg = self.convert_to_f2g_ros_msg(frame_id, gaussian_model)
+    def publish_message_to_gui(self, gaussian_packet):
+        f2g_msg = self.convert_to_f2g_ros_msg(gaussian_packet)
         f2g_msg.msg = f'Hello world {self.msg_counter}'
         self.get_logger().info(f'Publishing to GUI Node: {self.msg_counter}')
 
@@ -325,36 +344,37 @@ class GaussianSLAM(Node):
         self.f2g_publisher.publish(f2g_msg)
         self.msg_counter += 1
 
-    def convert_to_f2g_ros_msg(self, frame_id, gaussian_model):
+    def convert_to_f2g_ros_msg(self, gaussian_packet):
         
         f2g_msg = F2G()
 
-        projection_matrix = getProjectionMatrix2(
-            znear=0.01,
-            zfar=100.0,
-            fx=self.dataset.fx,
-            fy=self.dataset.fy,
-            cx=self.dataset.cx,
-            cy=self.dataset.cy,
-            W=self.dataset.width,
-            H=self.dataset.height,
-        ).transpose(0, 1)
-        projection_matrix = projection_matrix.to(device=self.device)
-
-        current_frame = Camera.init_from_dataset(self.dataset, frame_id, projection_matrix)
-        f2g_msg.current_frame = self.get_camera_msg_from_viewpoint(current_frame)
-
         f2g_msg.msg = "Sending 3D Gaussians"
-        f2g_msg.has_gaussians = True
-        f2g_msg.active_sh_degree = gaussian_model.active_sh_degree 
+        f2g_msg.has_gaussians = gaussian_packet.has_gaussians
 
-        f2g_msg.max_sh_degree = gaussian_model.max_sh_degree
-        f2g_msg.xyz = convert_numpy_array_to_ros_message(gaussian_model.get_xyz().detach().clone().cpu().numpy())
-        f2g_msg.features_dc = convert_numpy_array_to_ros_message(gaussian_model.get_dc_features().detach().clone().cpu().numpy())
-        f2g_msg.features_rest = convert_numpy_array_to_ros_message(gaussian_model.get_non_dc_features().detach().clone().cpu().numpy())
-        f2g_msg.scaling = convert_numpy_array_to_ros_message(gaussian_model.get_scaling().detach().clone().cpu().numpy())
-        f2g_msg.rotation = convert_numpy_array_to_ros_message(gaussian_model.get_rotation().detach().clone().cpu().numpy())
-        f2g_msg.opacity = convert_numpy_array_to_ros_message(gaussian_model.get_opacity().detach().clone().cpu().numpy())
+        if gaussian_packet.has_gaussians:
+            f2g_msg.active_sh_degree = gaussian_packet.active_sh_degree 
+
+            f2g_msg.max_sh_degree = gaussian_packet.max_sh_degree
+            f2g_msg.get_xyz = convert_tensor_to_ros_message(gaussian_packet.get_xyz)
+            f2g_msg.get_features = convert_tensor_to_ros_message(gaussian_packet.get_features)
+            f2g_msg.get_scaling = convert_tensor_to_ros_message(gaussian_packet.get_scaling)
+            f2g_msg.get_rotation = convert_tensor_to_ros_message(gaussian_packet.get_rotation)
+            f2g_msg.get_opacity = convert_tensor_to_ros_message(gaussian_packet.get_opacity)
+
+            f2g_msg.n_obs = gaussian_packet.n_obs
+
+            if gaussian_packet.gtcolor is not None:
+                print(type(gaussian_packet.gtcolor))
+                f2g_msg.gtcolor = convert_numpy_array_to_ros_message(gaussian_packet.gtcolor)
+            
+            if gaussian_packet.gtdepth is not None:
+                f2g_msg.gtdepth = convert_numpy_array_to_ros_message(gaussian_packet.gtdepth)
+        
+
+            f2g_msg.current_frame = self.get_camera_msg_from_viewpoint(gaussian_packet.current_frame)
+
+            f2g_msg.finish = gaussian_packet.finish
+
 
         return f2g_msg
 

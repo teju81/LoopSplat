@@ -101,15 +101,15 @@ class GaussianPacket:
             # self._rotation = gaussians._rotation.detach().clone()
             # self.rotation_activation = torch.nn.functional.normalize
         #     self.unique_kfIDs = gaussians.unique_kfIDs.clone()
-        #     self.n_obs = gaussians.n_obs.clone()
+            self.n_obs = gaussians.get_size()
 
         # self.keyframe = keyframe
-        # self.current_frame = current_frame
-        # self.gtcolor = self.resize_img(gtcolor, 320)
-        # self.gtdepth = self.resize_img(gtdepth, 320)
+        self.current_frame = current_frame
+        self.gtcolor = self.resize_img(gtcolor, 320)
+        self.gtdepth = self.resize_img(gtdepth, 320)
         # self.gtnormal = self.resize_img(gtnormal, 320)
         # self.keyframes = keyframes
-        # self.finish = finish
+        self.finish = finish
         # self.kf_window = kf_window
 
     def resize_img(self, img, width):

@@ -32,7 +32,7 @@ from loopsplat_ros.src.entities.gaussian_model import GaussianModel
 
 # import cv2
 # import glfw
-# import imgviz
+import imgviz
 import numpy as np
 import open3d as o3d
 import open3d.visualization.gui as gui
@@ -84,6 +84,7 @@ class SLAM_GUI(Node):
 
         self.init = False
         self.kf_window = None
+        self.keyframes = []
         self.render_img = None
         self.received_f2g_msg = False
 
@@ -302,6 +303,26 @@ class SLAM_GUI(Node):
     #     self.g_renderer.update_camera_intrin(self.g_camera)
     #     self.g_renderer.set_render_reso(self.g_camera.w, self.g_camera.h)
 
+    def add_camera(self, camera, name, color=[0, 1, 0], gt=False, size=0.01):
+        W2C = (
+            getWorld2View2(camera.R_gt, camera.T_gt)
+            if gt
+            else getWorld2View2(camera.R, camera.T)
+        )
+        W2C = W2C.cpu().numpy()
+        C2W = np.linalg.inv(W2C)
+        frustum = create_frustum(C2W, color, size=size)
+        if name not in self.frustum_dict.keys():
+            frustum = create_frustum(C2W, color)
+            self.combo_kf.add_item(name)
+            self.frustum_dict[name] = frustum
+            self.widget3d.scene.add_geometry(name, frustum.line_set, self.lit)
+        frustum = self.frustum_dict[name]
+        frustum.update_pose(C2W)
+        self.widget3d.scene.set_geometry_transform(name, C2W.astype(np.float64))
+        self.widget3d.scene.show_geometry(name, self.cameras_chbox.checked)
+        return frustum
+
     def _on_cameras_chbox(self, is_checked, name=None):
         names = self.frustum_dict.keys() if name is None else [name]
         for name in names:
@@ -494,24 +515,30 @@ class SLAM_GUI(Node):
         return viewpoint
 
     def convert_from_f2g_ros_msg(self, f2g_msg):
-        gaussian_cur = GaussianModel(0)
+        gaussian_packet = GaussianPacket()
+        gaussian_packet.has_gaussians = f2g_msg.has_gaussians
 
         if f2g_msg.has_gaussians:
-            gaussian_cur.active_sh_degree = f2g_msg.active_sh_degree
-            gaussian_cur.max_sh_degree = f2g_msg.max_sh_degree
+            gaussian_packet.active_sh_degree = f2g_msg.active_sh_degree
+            gaussian_packet.max_sh_degree = f2g_msg.max_sh_degree
 
-            gaussian_cur._xyz = convert_ros_multi_array_message_to_tensor(f2g_msg.xyz, self.device)
-            gaussian_cur._features_dc = convert_ros_multi_array_message_to_tensor(f2g_msg.features_dc, self.device)
-            gaussian_cur._features_rest = convert_ros_multi_array_message_to_tensor(f2g_msg.features_rest, self.device)
-            gaussian_cur._scaling = convert_ros_multi_array_message_to_tensor(f2g_msg.scaling, self.device)
-            gaussian_cur._rotation = convert_ros_multi_array_message_to_tensor(f2g_msg.rotation, self.device)
-            gaussian_cur._opacity = convert_ros_multi_array_message_to_tensor(f2g_msg.opacity, self.device)
+            gaussian_packet.get_xyz = convert_ros_multi_array_message_to_tensor(f2g_msg.get_xyz, self.device)
+            gaussian_packet.get_features = convert_ros_multi_array_message_to_tensor(f2g_msg.get_features, self.device)
+            gaussian_packet.get_scaling = convert_ros_multi_array_message_to_tensor(f2g_msg.get_scaling, self.device)
+            gaussian_packet.get_rotation = convert_ros_multi_array_message_to_tensor(f2g_msg.get_rotation, self.device)
+            gaussian_packet.get_opacity = convert_ros_multi_array_message_to_tensor(f2g_msg.get_opacity, self.device)
 
+            gaussian_packet.n_obs = f2g_msg.n_obs
 
-        current_frame = self.get_viewpoint_from_cam_msg(f2g_msg.current_frame)
+        if f2g_msg.gtcolor is not None:
+            gaussian_packet.gtcolor = convert_ros_multi_array_message_to_numpy(f2g_msg.gtcolor)
+        gaussian_packet.gtdepth = convert_ros_multi_array_message_to_numpy(f2g_msg.gtdepth)
 
+        gaussian_packet.current_frame = self.get_viewpoint_from_cam_msg(f2g_msg.current_frame)
 
-        return current_frame, gaussian_cur
+        gaussian_packet.finish = f2g_msg.finish
+
+        return gaussian_packet
 
     def f2g_listener_callback(self, f2g_msg):
         self.get_logger().info('I heard from frontend: %s' % f2g_msg.msg)
@@ -519,26 +546,27 @@ class SLAM_GUI(Node):
         self.received_f2g_msg = True
 
 
-        self.current_frame, self.gaussian_cur = self.convert_from_f2g_ros_msg(f2g_msg)
-        self.init = True
-        # if gaussian_packet is None:
-        #     return
-        # #Log("Rxd Gaussian Packets", tag="GUI")
+        gaussian_packet = self.convert_from_f2g_ros_msg(f2g_msg)
 
-        # if gaussian_packet.has_gaussians:
-            # self.gaussian_cur = gaussian_packet
-            # self.output_info.text = "Number of Gaussians: {}".format(
-            #     self.gaussian_cur.get_xyz.shape[0]
-            # )
-            # self.init = True
+        if gaussian_packet is None:
+            return
+        # Log("Rxd Gaussian Packets", tag="GUI")
 
-        # if current_frame is not None:
-        #     frustum = self.add_camera(
-        #         current_frame, name="current", color=[0, 1, 0]
-        #     )
+        if gaussian_packet.has_gaussians:
+            self.gaussian_cur = gaussian_packet
+            self.output_info.text = "Number of Gaussians: {}".format(
+                self.gaussian_cur.n_obs
+            )
+            self.init = True
 
-        #     viewpoint = (frustum.view_dir_behind)
-        #     self.widget3d.look_at(viewpoint[0], viewpoint[1], viewpoint[2])
+        if self.gaussian_cur.current_frame is not None:
+            frustum = self.add_camera(
+                self.gaussian_cur.current_frame, name="current", color=[0, 1, 0]
+            )
+
+            viewpoint = (frustum.view_dir_behind)
+            self.widget3d.look_at(viewpoint[0], viewpoint[1], viewpoint[2])
+            self.keyframes.append(self.gaussian_cur.current_frame)
 
         # if gaussian_packet.keyframe is not None:
         #     name = "keyframe_{}".format(gaussian_packet.keyframe.uid)
@@ -546,8 +574,9 @@ class SLAM_GUI(Node):
         #         gaussian_packet.keyframe, name=name, color=[0, 0, 1]
         #     )
 
-        # if gaussian_packet.keyframes is not None:
-        #     for keyframe in gaussian_packet.keyframes:
+        # if self.keyframes is not None:
+        #     print(len(self.keyframes))
+        #     for keyframe in self.keyframes:
         #         name = "keyframe_{}".format(keyframe.uid)
         #         frustum = self.add_camera(keyframe, name=name, color=[0, 0, 1])
 
@@ -555,92 +584,32 @@ class SLAM_GUI(Node):
         #     self.kf_window = gaussian_packet.kf_window
         #     self._on_kf_window_chbox(is_checked=self.kf_window_chbox.checked)
 
-        # if gaussian_packet.gtcolor is not None:
-        #     rgb = torch.clamp(gaussian_packet.gtcolor, min=0, max=1.0) * 255
-        #     rgb = rgb.byte().permute(1, 2, 0).contiguous().cpu().numpy()
-        #     rgb = o3d.geometry.Image(rgb)
-        #     self.in_rgb_widget.update_image(rgb)
+        if gaussian_packet.gtcolor is not None:
+            rgb = gaussian_packet.gtcolor.astype(np.uint8)
+            rgb = o3d.geometry.Image(rgb)
+            self.in_rgb_widget.update_image(rgb)
 
-        # if gaussian_packet.gtdepth is not None:
-        #     depth = gaussian_packet.gtdepth
-        #     depth = imgviz.depth2rgb(
-        #         depth, min_value=0.1, max_value=5.0, colormap="jet"
-        #     )
-        #     depth = torch.from_numpy(depth)
-        #     depth = torch.permute(depth, (2, 0, 1)).float()
-        #     depth = (depth).byte().permute(1, 2, 0).contiguous().cpu().numpy()
-        #     rgb = o3d.geometry.Image(depth)
-        #     self.in_depth_widget.update_image(rgb)
+        if gaussian_packet.gtdepth is not None:
+            depth = gaussian_packet.gtdepth
+            depth = imgviz.depth2rgb(
+                depth, min_value=0.1, max_value=5.0, colormap="jet"
+            )
+            depth = torch.from_numpy(depth)
+            depth = torch.permute(depth, (2, 0, 1)).float()
+            depth = (depth).byte().permute(1, 2, 0).contiguous().cpu().numpy()
+            rgb = o3d.geometry.Image(depth)
+            self.in_depth_widget.update_image(rgb)
 
-        # if gaussian_packet.finish:
-        #     Log("Received terminate signal", tag="GUI")
-        #     # # clean up the pipe
-        #     # while not self.q_main2vis.empty():
-        #     #     self.q_main2vis.get()
-        #     # while not self.q_vis2main.empty():
-        #     #     self.q_vis2main.get()
-        #     # self.q_vis2main = None
-        #     # self.q_main2vis = None
-        #     self.process_finished = True
-
-    # @staticmethod
-    # def resize_img(img, width):
-    #     height = int(width * img.shape[0] / img.shape[1])
-    #     return cv2.resize(img, (width, height))
-
-    # def add_ids(self):
-    #     indices = (
-    #         torch.unique(self.gaussian_cur.unique_kfIDs).cpu().numpy().astype(int)
-    #     ).tolist()
-    #     for idx in indices:
-    #         if idx in self.gaussian_id_dict.keys():
-    #             continue
-
-    #         self.gaussian_id_dict[idx] = 0
-    #         self.combo_gaussian_id.add_item(str(idx))
-
-    # @staticmethod
-    # def depth_to_normal(points, k=3, d_min=1e-3, d_max=10.0):
-    #     k = (k - 1) // 2
-    #     # points: (B, 3, H, W)
-    #     b, _, h, w = points.size()
-    #     points_pad = F.pad(
-    #         points, (k, k, k, k), mode="constant", value=0
-    #     )  # (B, 3, k+H+k, k+W+k)
-    #     if d_max is not None:
-    #         valid_pad = (points_pad[:, 2:, :, :] > d_min) & (
-    #             points_pad[:, 2:, :, :] < d_max
-    #         )  # (B, 1, k+H+k, k+W+k)
-    #     else:
-    #         valid_pad = points_pad[:, 2:, :, :] > d_min
-    #     valid_pad = valid_pad.float()
-
-    #     # vertical vector (top - bottom)
-    #     vec_vert = (
-    #         points_pad[:, :, :h, k : w + k]
-    #         - points_pad[:, :, 2 * k : h + (2 * k), k : w + k]
-    #     )
-
-    #     # horizontal vector (left - right)
-    #     vec_hori = (
-    #         points_pad[:, :, k : h + k, :w]
-    #         - points_pad[:, :, k : h + k, 2 * k : w + (2 * k)]
-    #     )
-
-    #     # valid_mask
-    #     valid_mask = (
-    #         valid_pad[:, :, k : h + k, k : w + k]
-    #         * valid_pad[:, :, :h, k : w + k]
-    #         * valid_pad[:, :, 2 * k : h + (2 * k), k : w + k]
-    #         * valid_pad[:, :, k : h + k, :w]
-    #         * valid_pad[:, :, k : h + k, 2 * k : w + (2 * k)]
-    #     )
-    #     valid_mask = valid_mask > 0.5
-
-    #     # get cross product (B, 3, H, W)
-    #     cross_product = -torch.linalg.cross(vec_vert, vec_hori, dim=1)
-    #     normal = F.normalize(cross_product, p=2.0, dim=1, eps=1e-12)
-    #     return normal, valid_mask
+        if gaussian_packet.finish:
+            Log("Received terminate signal", tag="GUI")
+            # # clean up the pipe
+            # while not self.q_main2vis.empty():
+            #     self.q_main2vis.get()
+            # while not self.q_vis2main.empty():
+            #     self.q_vis2main.get()
+            # self.q_vis2main = None
+            # self.q_main2vis = None
+            self.process_finished = True
 
     @staticmethod
     def vfov_to_hfov(vfov_deg, height, width):
@@ -713,20 +682,20 @@ class SLAM_GUI(Node):
     #         )
     #     return rendering_data
         # Set up rasterization configuration
-        tanfovx = math.tan(self.current_frame.FoVx * 0.5)
-        tanfovy = math.tan(self.current_frame.FoVy * 0.5)
+        tanfovx = math.tan(self.gaussian_cur.current_frame.FoVx * 0.5)
+        tanfovy = math.tan(self.gaussian_cur.current_frame.FoVy * 0.5)
         raster_settings = GaussianRasterizationSettings(
-            image_height=int(self.current_frame.image_height),
-            image_width=int(self.current_frame.image_width),
+            image_height=int(self.gaussian_cur.current_frame.image_height),
+            image_width=int(self.gaussian_cur.current_frame.image_width),
             tanfovx=tanfovx,
             tanfovy=tanfovy,
             bg=self.background,
             scale_modifier=1.0,
-            viewmatrix=self.current_frame.world_view_transform,
-            projmatrix=self.current_frame.full_proj_transform,
-            projmatrix_raw=self.current_frame.projection_matrix,
+            viewmatrix=self.gaussian_cur.current_frame.world_view_transform,
+            projmatrix=self.gaussian_cur.current_frame.full_proj_transform,
+            projmatrix_raw=self.gaussian_cur.current_frame.projection_matrix,
             sh_degree=self.gaussian_cur.active_sh_degree,
-            campos=self.current_frame.camera_center,
+            campos=self.gaussian_cur.current_frame.camera_center,
             prefiltered=False,
             debug=False,
         )
@@ -831,7 +800,7 @@ class SLAM_GUI(Node):
         #         .cpu()
         #         .numpy()
         #     )
-        rgb = (self.current_frame.original_image.byte()
+        rgb = (self.gaussian_cur.current_frame.original_image.byte()
             .contiguous()
             .cpu()
             .numpy()

@@ -6,7 +6,8 @@ import numpy as np
 import open3d as o3d
 import torch
 from gaussian_rasterizer import GaussianRasterizationSettings, GaussianRasterizer
-
+from loopsplat_ros.src.entities.gaussian_model import GaussianModel
+from loopsplat_ros.src.gui.gui_utils import GaussianPacket
 
 def setup_seed(seed: int) -> None:
     """ Sets the seed for generating random numbers to ensure reproducibility across multiple runs.
@@ -147,7 +148,7 @@ def render_gaussian_model(gaussian_model, render_settings,
     renderer = GaussianRasterizer(raster_settings=render_settings)
 
     if override_means_3d is None:
-        means3D = gaussian_model.get_xyz()
+        means3D = gaussian_model.get_xyz() if isinstance(gaussian_model, GaussianModel) else gaussian_model.get_xyz
     else:
         means3D = override_means_3d
 
@@ -159,7 +160,7 @@ def render_gaussian_model(gaussian_model, render_settings,
         means2D = override_means_2d
 
     if override_opacities is None:
-        opacities = gaussian_model.get_opacity()
+        opacities = gaussian_model.get_opacity() if isinstance(gaussian_model, GaussianModel) else gaussian_model.get_opacity
     else:
         opacities = override_opacities
 
@@ -167,7 +168,18 @@ def render_gaussian_model(gaussian_model, render_settings,
     if override_colors is not None:
         colors_precomp = override_colors
     else:
-        shs = gaussian_model.get_features()
+        shs = gaussian_model.get_features() if isinstance(gaussian_model, GaussianModel) else gaussian_model.get_features
+
+
+    if override_scales is None:
+        scales = gaussian_model.get_scaling() if isinstance(gaussian_model, GaussianModel) else gaussian_model.get_scaling
+    else:
+        scales = override_scales
+
+    if override_rotations is None:
+        rotations = gaussian_model.get_rotation() if isinstance(gaussian_model, GaussianModel) else gaussian_model.get_rotation
+    else:
+        rotations = override_rotations
 
     render_args = {
         "means3D": means3D,
@@ -175,8 +187,8 @@ def render_gaussian_model(gaussian_model, render_settings,
         "opacities": opacities,
         "colors_precomp": colors_precomp,
         "shs": shs,
-        "scales": gaussian_model.get_scaling() if override_scales is None else override_scales,
-        "rotations": gaussian_model.get_rotation() if override_rotations is None else override_rotations,
+        "scales": scales,
+        "rotations": rotations,
         "cov3D_precomp": None
     }
     color, depth, alpha, radii = renderer(**render_args)
