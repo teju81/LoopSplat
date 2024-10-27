@@ -559,13 +559,21 @@ class SLAM_GUI(Node):
             )
             self.init = True
 
+        if self.keyframes is not None:
+            for keyframe in self.keyframes:
+                name = "keyframe_{}".format(keyframe.uid)
+                frustum = self.add_camera(keyframe, name=name, color=[0, 0, 1], gt=True)
+
         if self.gaussian_cur.current_frame is not None:
             frustum = self.add_camera(
-                self.gaussian_cur.current_frame, name="current", color=[0, 1, 0]
+                self.gaussian_cur.current_frame, name="current", color=[0, 1, 0], gt=True
             )
-
             if self.followcam_chbox.checked:
-                viewpoint = (frustum.view_dir_behind)
+                viewpoint = (
+                    frustum.view_dir_behind
+                    if self.staybehind_chbox.checked
+                    else frustum.view_dir
+                )
                 self.widget3d.look_at(viewpoint[0], viewpoint[1], viewpoint[2])
             self.keyframes.append(self.gaussian_cur.current_frame)
 
@@ -575,11 +583,6 @@ class SLAM_GUI(Node):
         #         gaussian_packet.keyframe, name=name, color=[0, 0, 1]
         #     )
 
-        # if self.keyframes is not None:
-        #     print(len(self.keyframes))
-        #     for keyframe in self.keyframes:
-        #         name = "keyframe_{}".format(keyframe.uid)
-        #         frustum = self.add_camera(keyframe, name=name, color=[0, 0, 1])
 
         # if gaussian_packet.kf_window is not None:
         #     self.kf_window = gaussian_packet.kf_window
