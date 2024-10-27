@@ -89,7 +89,7 @@ class SLAM_GUI(Node):
 
         if params_gui is not None:
             self.background = params_gui.background
-            self.gaussian_cur = params_gui.gaussians
+            # self.gaussian_cur = params_gui.gaussians
             self.frontend_id = params_gui.frontend_id
             self.init = True
             # self.q_main2vis = params_gui.q_main2vis
@@ -564,8 +564,9 @@ class SLAM_GUI(Node):
                 self.gaussian_cur.current_frame, name="current", color=[0, 1, 0]
             )
 
-            viewpoint = (frustum.view_dir_behind)
-            self.widget3d.look_at(viewpoint[0], viewpoint[1], viewpoint[2])
+            if self.followcam_chbox.checked:
+                viewpoint = (frustum.view_dir_behind)
+                self.widget3d.look_at(viewpoint[0], viewpoint[1], viewpoint[2])
             self.keyframes.append(self.gaussian_cur.current_frame)
 
         # if gaussian_packet.keyframe is not None:
@@ -780,7 +781,7 @@ class SLAM_GUI(Node):
                     .contiguous()
                     .cpu()
                     .numpy()
-                )
+            )
             # rgb = (self.gaussian_cur.current_frame.original_image.byte()
             #     .contiguous()
             #     .cpu()
@@ -801,7 +802,7 @@ class SLAM_GUI(Node):
         self.widget3d.scene.set_background([0, 0, 0, 1], self.render_img)
 
     def scene_update(self):
-        if self.received_f2g_msg and self.gaussian_cur is not None:
+        if self.gaussian_cur is not None:
             self.render_gui()
             self.received_f2g_msg = False
 
