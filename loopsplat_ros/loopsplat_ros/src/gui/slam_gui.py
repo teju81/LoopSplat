@@ -309,7 +309,8 @@ class SLAM_GUI(Node):
         self.g_renderer.set_render_reso(self.g_camera.w, self.g_camera.h)
 
     def add_camera(self, camera, name, color=[0, 1, 0], gt=False, size=0.01):
-        color = self.color_jet[self.submap_id][:-1] # select only RGB and ignore last term which is A
+        if name != "current":
+            color = self.color_jet[self.submap_id][:-1] # select only RGB and ignore last term which is A
         W2C = (
             getWorld2View2(camera.R_gt, camera.T_gt)
             if gt
@@ -317,6 +318,7 @@ class SLAM_GUI(Node):
         )
         W2C = W2C.cpu().numpy()
         C2W = np.linalg.inv(W2C)
+        C2W = W2C # Camera trajectory is inverted for some reason - need to understand why this is the case
         frustum = create_frustum(C2W, color, size=size)
         if name not in self.frustum_dict.keys():
             frustum = create_frustum(C2W, color)
@@ -602,7 +604,7 @@ class SLAM_GUI(Node):
 
         if self.gaussian_cur.current_frame is not None:
             frustum = self.add_camera(
-                self.gaussian_cur.current_frame, name="current", color=[0, 1, 0], gt=True
+                self.gaussian_cur.current_frame, name="current", color=[1, 0, 0], gt=True
             )
             if self.followcam_chbox.checked:
                 viewpoint = (
