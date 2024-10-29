@@ -77,6 +77,7 @@ def create_frustum(pose, frusutum_color=[0, 1, 0], size=0.02):
 class GaussianPacket:
     def __init__(
         self,
+        submap_id=None,
         gaussians=None,
         keyframe=None,
         current_frame=None,
@@ -85,9 +86,10 @@ class GaussianPacket:
         gtnormal=None,
         keyframes=None,
         finish=False,
-        kf_window=None,
     ):
         self.has_gaussians = False
+        self.submap_id = submap_id
+
         if gaussians is not None:
             self.has_gaussians = True
             self.get_xyz = gaussians.get_xyz().detach().clone()
@@ -104,13 +106,13 @@ class GaussianPacket:
             self.n_obs = gaussians.get_size()
 
         # self.keyframe = keyframe
+        # self.keyframes = keyframes
         self.current_frame = current_frame
         self.gtcolor = self.resize_img(gtcolor, 320)
         self.gtdepth = self.resize_img(gtdepth, 320)
         # self.gtnormal = self.resize_img(gtnormal, 320)
-        # self.keyframes = keyframes
+        # self.submap_keyframe_ids = submap_keyframe_ids
         self.finish = finish
-        # self.kf_window = kf_window
 
     def resize_img(self, img, width):
         if img is None:

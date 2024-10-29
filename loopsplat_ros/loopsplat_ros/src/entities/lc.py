@@ -91,7 +91,8 @@ class Loop_closure(object):
         with torch.no_grad():
             kf_ids, submap_desc = [], []
             for key in keyframes_info.keys():
-                submap_desc.append(self.netvlad(np2torch(self.dataset[key][1], self.device).permute(2, 0, 1)[None]/255.0))
+                desc = self.netvlad(np2torch(self.dataset[key][1], self.device).permute(2, 0, 1)[None]/255.0)
+                submap_desc.append(desc)
             submap_desc = torch.cat(submap_desc)
             self_sim = torch.einsum("id,jd->ij", submap_desc, submap_desc)
             score_min, _ = self_sim.topk(max(int(len(submap_desc) * self.config["lc"]["min_similarity"]), 1))

@@ -1,5 +1,6 @@
 string msg
 bool has_gaussians
+uint8 submap_id
 uint8 active_sh_degree
 uint8 max_sh_degree
 std_msgs/Float32MultiArray get_xyz

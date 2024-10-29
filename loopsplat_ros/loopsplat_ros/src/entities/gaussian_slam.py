@@ -324,6 +324,7 @@ class GaussianSLAM(Node):
 
             current_frame = Camera.init_from_dataset(self.dataset, frame_id, projection_matrix)
             gaussian_packet = GaussianPacket(
+                submap_id=self.submap_id,
                 gaussians=clone_obj(gaussian_model),
                 current_frame=current_frame,
                 gtcolor=current_frame.original_image,
@@ -350,6 +351,7 @@ class GaussianSLAM(Node):
 
         f2g_msg.msg = "Sending 3D Gaussians"
         f2g_msg.has_gaussians = gaussian_packet.has_gaussians
+        f2g_msg.submap_id = gaussian_packet.submap_id
 
         if gaussian_packet.has_gaussians:
             f2g_msg.active_sh_degree = gaussian_packet.active_sh_degree 
