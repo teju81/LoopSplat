@@ -96,6 +96,9 @@ class Loop_closure(object):
             submap_desc = torch.cat(submap_desc)
             self_sim = torch.einsum("id,jd->ij", submap_desc, submap_desc)
             score_min, _ = self_sim.topk(max(int(len(submap_desc) * self.config["lc"]["min_similarity"]), 1))
+            print("Updating Submap info...")
+            print(f"self sim shape: {self_sim.shape}")
+            print(f"score min shape: {score_min.shape}")
             
         self.submap_lc_info[self.submap_id] = {
                 "submap_id": self.submap_id,
@@ -176,13 +179,24 @@ class Loop_closure(object):
         with torch.no_grad():
             cross_sim = torch.einsum("id,jd->ij", query_desc, db_desc)
             self_sim = query_info['self_sim']
+            print(f"Number of submaps {n_submaps}")
+            print(f"query desc shape: {query_desc.shape}")
+            print(f"DB desc shape: {db_desc.shape}")
+            print("Cross sim and self sim are given below")
+            print(f"cross sim shape: {cross_sim.shape}")
+            print(f"score min shape: {self_sim.shape}")
+            print("retrieving matches.....")
             matches = torch.argwhere(cross_sim > self_sim[:,[-1]])[:,-1]
+            print(f"Matched frame IDs: {matches}")
             matched_map_ids = db_desc_map_id[matches].long().unique()
+            print(f"Matched submap IDs: {matched_map_ids}")
         
         # filter out invalid matches
         filtered_mask = abs(matched_map_ids - query_id) > self.min_interval
         matched_map_ids = matched_map_ids[filtered_mask]
-                
+        print(f"Candidate submap ids need to be at a minimum interval of {self.min_interval} from query id: {query_id}")
+        print(f"Filtered Matched submap IDs: {matched_map_ids}")
+
         return matched_map_ids
     
     def construct_pose_graph(self, final=False):
