@@ -213,10 +213,13 @@ class Loop_closure(object):
         odometry_edges, loop_edges = [], []
         new_submap_valid_loop = False
         for source_id in tqdm(reversed(range(1, n_submaps))):
+            print(f"source id: {source_id}")
             matches = self.detect_closure(source_id, final)
             iterator = range(source_id+1, n_submaps) if final else range(source_id)
             for target_id in iterator:
+                print(f"target id: {target_id}")
                 if abs(target_id - source_id)== 1: # odometry edge
+                    print("constructing odometry edge")
                     reg_dict = self.pairwise_registration(submap_list[source_id], submap_list[target_id], "identity")
                     transformation = reg_dict['transformation']
                     information = reg_dict['information']
@@ -232,9 +235,12 @@ class Loop_closure(object):
                     te = np.linalg.norm(gt_dict['transformation'][:3,3] - reg_dict["transformation"][:3,3])
                     odometry_edges.append((source_id, target_id, ae.item(), te.item()))
                     # TODO: update odometry edge with the PGO_edge class
+                    print("done...")
 
                 elif target_id in matches: # loop closure edge
+                    print("constructing loop closure edge")
                     reg_dict = self.pairwise_registration(submap_list[source_id], submap_list[target_id], "gs_reg")
+                    print(f"Success: 0")
                     if not reg_dict['successful']: continue
                     
                     if np.isnan(reg_dict["transformation"][:3,3]).any() or reg_dict["transformation"][3,3]!=1.0: continue
@@ -254,8 +260,11 @@ class Loop_closure(object):
                                                                 information,
                                                                 uncertain=True))
                     new_submap_valid_loop = True
+                    print(f"Done... Success: {reg_dict['successful']}")
+            print(f"source id: {source_id}, submap id: {self.submap_id}, valid loop: {new_submap_valid_loop}..")
             
             if source_id == self.submap_id and not new_submap_valid_loop:
+                print("breaking loop!!!")
                 break    
                 
         return pose_graph, odometry_edges, loop_edges
