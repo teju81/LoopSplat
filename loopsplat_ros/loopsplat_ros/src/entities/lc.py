@@ -15,7 +15,7 @@ from loopsplat_ros.src.entities.datasets import BaseDataset
 from loopsplat_ros.src.entities.gaussian_model import GaussianModel
 from loopsplat_ros.src.entities.arguments import OptimizationParams
 
-from loopsplat_ros.src.gsr.descriptor import GlobalDesc
+from loopsplat_ros.src.gsr.descriptor import GlobalDesc, LocalDesc
 from loopsplat_ros.src.gsr.camera import Camera
 from loopsplat_ros.src.gsr.solver import gaussian_registration as gs_reg
 from loopsplat_ros.src.gsr.pcr import (preprocess_point_cloud, execute_global_registration)
@@ -55,6 +55,7 @@ class Loop_closure(object):
         self.logger = logger
         self.config = config
         self.netvlad = GlobalDesc()
+        self.superpoint = LocalDesc()
         self.submap_lc_info = dict()
         self.submap_id = 0
         self.submap_path = None
@@ -88,10 +89,15 @@ class Loop_closure(object):
         Args:
             keyframes_info (dict): a dictionary of all submap information for loop closures
         """
+
+        #Extract global and local features for each keyframe using hierarchical localization package
         with torch.no_grad():
             kf_ids, submap_desc = [], []
             for key in keyframes_info.keys():
-                desc = self.netvlad(np2torch(self.dataset[key][1], self.device).permute(2, 0, 1)[None]/255.0)
+                np_color_img = self.dataset[key][1]
+                np_grayscale_image = np.dot(np_color_img[..., :3], [0.2989, 0.5870, 0.1140])
+                keypoints, descriptors, scores = self.superpoint(np2torch(np_grayscale_image, self.device).unsqueeze(0)[None]/255.0)
+                desc = self.netvlad(np2torch(np_color_img, self.device).permute(2, 0, 1)[None]/255.0)
                 submap_desc.append(desc)
             submap_desc = torch.cat(submap_desc)
             self_sim = torch.einsum("id,jd->ij", submap_desc, submap_desc)
