@@ -92,13 +92,15 @@ class Loop_closure(object):
 
         #Extract global and local features for each keyframe using hierarchical localization package
         with torch.no_grad():
-            kf_ids, submap_desc = [], []
+            kf_ids, submap_desc, local_descriptors, keypoints = [], [], [], []
             for key in keyframes_info.keys():
                 np_color_img = self.dataset[key][1]
                 np_grayscale_image = np.dot(np_color_img[..., :3], [0.2989, 0.5870, 0.1140])
-                keypoints, descriptors, scores = self.superpoint(np2torch(np_grayscale_image, self.device).unsqueeze(0)[None]/255.0)
-                desc = self.netvlad(np2torch(np_color_img, self.device).permute(2, 0, 1)[None]/255.0)
-                submap_desc.append(desc)
+                kps, local_desc, scores = self.superpoint(np2torch(np_grayscale_image, self.device).unsqueeze(0)[None]/255.0)
+                keypoints.append(kps[0])
+                local_descriptors.append(local_desc[0].T)
+                global_desc = self.netvlad(np2torch(np_color_img, self.device).permute(2, 0, 1)[None]/255.0)
+                submap_desc.append(global_desc)
             submap_desc = torch.cat(submap_desc)
             self_sim = torch.einsum("id,jd->ij", submap_desc, submap_desc)
             score_min, _ = self_sim.topk(max(int(len(submap_desc) * self.config["lc"]["min_similarity"]), 1))
@@ -109,7 +111,9 @@ class Loop_closure(object):
         self.submap_lc_info[self.submap_id] = {
                 "submap_id": self.submap_id,
                 "kf_id": np.array(sorted(list(keyframes_info.keys()))),
-                "kf_desc": submap_desc,
+                "keypoints": keypoints,
+                "local_descriptors": local_descriptors,
+                "global_desc": submap_desc,
                 "self_sim": score_min, # per image self similarity within the submap
             }
     
@@ -156,7 +160,7 @@ class Loop_closure(object):
             "gaussians": gaussians,
             "kf_ids": submap_dict['submap_keyframes'],
             "cameras": submap_cams,
-            "kf_desc": self.submap_lc_info[id]['kf_desc']
+            "global_desc": self.submap_lc_info[id]['global_desc']
             }
         
         return data_dict
@@ -176,11 +180,11 @@ class Loop_closure(object):
         db_info_list = [self.submap_lc_info[i] for i in iterator]
         db_desc_map_id = []
         for db_info in db_info_list:
-            db_desc_map_id += [db_info['submap_id'] for _ in db_info['kf_desc']]
+            db_desc_map_id += [db_info['submap_id'] for _ in db_info['global_desc']]
         db_desc_map_id = torch.Tensor(db_desc_map_id).to(self.device)
         
-        query_desc = query_info['kf_desc']
-        db_desc = torch.cat([db_info['kf_desc'] for db_info in db_info_list])
+        query_desc = query_info['global_desc']
+        db_desc = torch.cat([db_info['global_desc'] for db_info in db_info_list])
         
         with torch.no_grad():
             cross_sim = torch.einsum("id,jd->ij", query_desc, db_desc)
@@ -192,7 +196,15 @@ class Loop_closure(object):
             print(f"cross sim shape: {cross_sim.shape}")
             print(f"score min shape: {self_sim.shape}")
             print("retrieving matches.....")
-            matches = torch.argwhere(cross_sim > self_sim[:,[-1]])[:,-1]
+            
+            
+            # For each frame in the query submap, retrieve the frames where 
+            # cross similarity with the query frames is greater than the median self similarity score of the query frame
+
+            query_sim_median = self_sim[:,[-1]]
+            
+            #Row indicates query frame, column indicates frame in the database
+            matches = torch.argwhere(cross_sim > query_sim_median)[:,-1] #Ignore row and return only column IDs
             print(f"Matched frame IDs: {matches}")
             matched_map_ids = db_desc_map_id[matches].long().unique()
             print(f"Matched submap IDs: {matched_map_ids}")
@@ -202,6 +214,26 @@ class Loop_closure(object):
         matched_map_ids = matched_map_ids[filtered_mask]
         print(f"Candidate submap ids need to be at a minimum interval of {self.min_interval} from query id: {query_id}")
         print(f"Filtered Matched submap IDs: {matched_map_ids}")
+
+
+        # Perform geometric verification if there is a submap match
+        query_kf_ids = self.submap_lc_info[query_id]["kf_ids"]
+        # Choose the first frame
+        query_kf_id = query_kf_ids[0]
+        query_image = self.dataset[query_kf_id][1]
+
+        # Visualize one keyframe from each submap id
+        curr_frame_rgb = cv2.cvtColor(query_image, cv2.COLOR_BGR2RGB)
+        cv2.imshow(f'Query KF in submap ID {query_id}', query_image)
+        for mid_pt in matched_map_ids:
+            mid = mid_pt.item()
+            # Choose the first frame
+            fid = self.submap_lc_info[mid]["kf_id"][0]
+            matched_color_img = self.dataset[fid][1]
+            matched_color_img_rgb = cv2.cvtColor(matched_color_img, cv2.COLOR_BGR2RGB)
+            cv2.imshow(f'Matched Submap ID {mid}', matched_color_img_rgb)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
 
         return matched_map_ids
     
