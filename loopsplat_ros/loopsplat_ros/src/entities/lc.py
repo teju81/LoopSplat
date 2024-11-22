@@ -9,6 +9,7 @@ from tqdm import tqdm
 from PIL import Image
 from pathlib import Path
 import matplotlib.pyplot as plt
+import cv2
 
 from loopsplat_ros.src.entities.logger import Logger
 from loopsplat_ros.src.entities.datasets import BaseDataset
@@ -92,13 +93,14 @@ class Loop_closure(object):
 
         #Extract global and local features for each keyframe using hierarchical localization package
         with torch.no_grad():
-            kf_ids, submap_desc, local_descriptors, keypoints = [], [], [], []
+            kf_ids, submap_desc, local_descriptors, keypoints, scores = [], [], [], [], []
             for key in keyframes_info.keys():
                 np_color_img = self.dataset[key][1]
                 np_grayscale_image = np.dot(np_color_img[..., :3], [0.2989, 0.5870, 0.1140])
-                kps, local_desc, scores = self.superpoint(np2torch(np_grayscale_image, self.device).unsqueeze(0)[None]/255.0)
+                kps, local_desc, kp_scores = self.superpoint(np2torch(np_grayscale_image, self.device).unsqueeze(0)[None]/255.0)
                 keypoints.append(kps[0])
-                local_descriptors.append(local_desc[0].T)
+                scores.append(kp_scores[0])
+                local_descriptors.append(local_desc[0])
                 global_desc = self.netvlad(np2torch(np_color_img, self.device).permute(2, 0, 1)[None]/255.0)
                 submap_desc.append(global_desc)
             submap_desc = torch.cat(submap_desc)
@@ -110,9 +112,10 @@ class Loop_closure(object):
             
         self.submap_lc_info[self.submap_id] = {
                 "submap_id": self.submap_id,
-                "kf_id": np.array(sorted(list(keyframes_info.keys()))),
+                "kf_ids": np.array(sorted(list(keyframes_info.keys()))),
                 "keypoints": keypoints,
                 "local_descriptors": local_descriptors,
+                "keypoint_scores": scores,
                 "global_desc": submap_desc,
                 "self_sim": score_min, # per image self similarity within the submap
             }
@@ -217,23 +220,86 @@ class Loop_closure(object):
 
 
         # Perform geometric verification if there is a submap match
+
+        matcher_type = 'BF'
+        if matcher_type == 'BF':
+            matcher = cv2.BFMatcher(cv2.NORM_L2, crossCheck=True)
+        elif matcher_type == 'FLANN':
+            index_params = dict(algorithm=1, trees=5)  # FLANN parameters for KD-Tree
+            search_params = dict(checks=50)
+            matcher = cv2.FlannBasedMatcher(index_params, search_params)
+        else:
+            raise ValueError("Invalid matcher_type. Use 'BF' or 'FLANN'.")
+
         query_kf_ids = self.submap_lc_info[query_id]["kf_ids"]
         # Choose the first frame
-        query_kf_id = query_kf_ids[0]
+        ind = 0
+        query_kf_id = query_kf_ids[ind]
+        query_details = (query_id, ind, query_kf_id)
         query_image = self.dataset[query_kf_id][1]
-
-        # Visualize one keyframe from each submap id
         curr_frame_rgb = cv2.cvtColor(query_image, cv2.COLOR_BGR2RGB)
-        cv2.imshow(f'Query KF in submap ID {query_id}', query_image)
+        curr_frame_gray = cv2.cvtColor(query_image, cv2.COLOR_BGR2GRAY)
+
+
+        kp_scores_query = self.submap_lc_info[query_id]["keypoint_scores"][ind]
+        kp_query = self.submap_lc_info[query_id]["keypoints"][ind]
+        kp_query_np = kp_query.cpu().numpy()
+        kp_query_cv = [cv2.KeyPoint(x=kp[0], y=kp[1], size=int(kp_scores_query[i].item() * 50)) for i, kp in enumerate(kp_query_np)]
+        ld_query = self.submap_lc_info[query_id]["local_descriptors"][ind]
+        ld_query = ld_query.T.cpu().numpy().astype(np.float32)
+
         for mid_pt in matched_map_ids:
+            
             mid = mid_pt.item()
-            # Choose the first frame
-            fid = self.submap_lc_info[mid]["kf_id"][0]
-            matched_color_img = self.dataset[fid][1]
-            matched_color_img_rgb = cv2.cvtColor(matched_color_img, cv2.COLOR_BGR2RGB)
-            cv2.imshow(f'Matched Submap ID {mid}', matched_color_img_rgb)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+            best_avg_distance = float('inf')
+            
+            for ind, fid in enumerate(self.submap_lc_info[mid]["kf_ids"]):
+                matched_color_img = self.dataset[fid][1]
+                matched_color_img_rgb = cv2.cvtColor(matched_color_img, cv2.COLOR_BGR2RGB)
+                matched_color_img_gray = cv2.cvtColor(matched_color_img, cv2.COLOR_BGR2GRAY)
+                
+                kp_scores_2 = self.submap_lc_info[mid]["keypoint_scores"][ind]
+                kp_2 = self.submap_lc_info[mid]["keypoints"][ind]
+                kp_2_np = kp_2.cpu().numpy()
+                kp_2_cv = [cv2.KeyPoint(x=kp[0], y=kp[1], size=int(kp_scores_2[i].item() * 50)) for i, kp in enumerate(kp_2_np)]
+                ld_2 = self.submap_lc_info[mid]["local_descriptors"][ind]
+                ld_2 = ld_2.T.cpu().numpy().astype(np.float32)
+
+                # Match descriptors using BFMatcher
+                matches = matcher.match(ld_query, ld_2)
+                matching_details = (mid, ind, fid)
+
+                match_annotated_img = cv2.drawMatches(curr_frame_gray, kp_query_cv, matched_color_img_gray, kp_2_cv, matches[:50], None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+                side_by_side = cv2.hconcat([curr_frame_rgb, matched_color_img_rgb])
+                stacked_image = np.vstack((side_by_side, match_annotated_img))
+                cv2.imshow(f'Query Details: {query_details} and current matching frame details {matching_details}', stacked_image)
+                cv2.waitKey(0)
+                cv2.destroyAllWindows()
+
+                # Find the key frame with the closest distance
+                avg_distance = sum(match.distance for match in matches) / len(matches)
+
+                # Update the best match
+                if avg_distance < best_avg_distance:
+                    best_avg_distance = avg_distance
+                    best_ind = ind
+                    best_kfid = fid
+                    best_matched_color_img_rgb = matched_color_img_rgb
+                    best_matched_color_img_gray = matched_color_img_gray
+                    best_kp_2_cv = kp_2_cv
+                    best_matches = matches
+                    best_matching_details = matching_details
+
+            match_annotated_img = cv2.drawMatches(curr_frame_gray, kp_query_cv, best_matched_color_img_gray, best_kp_2_cv, best_matches[:50], None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+            side_by_side = cv2.hconcat([curr_frame_rgb, best_matched_color_img_rgb])
+            stacked_image = np.vstack((side_by_side, match_annotated_img))
+            cv2.imshow(f'Query Details: {query_details} has best match with {best_matching_details}', stacked_image)
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
+                #cv2.imshow(f'Query KF ID: 0 in submap ID {query_id} has matched with keyframe id: 0 in Submap ID {mid}', side_by_side)
+                #cv2.imshow(f'Keypoint Matches', match_annotated_img)
+                #break
+
 
         return matched_map_ids
     

@@ -187,18 +187,18 @@ class GaussianSLAM(Node):
                         print("Loop closure detected")
                         print(f"Matching submap ids: {matched_loop_closure_submap_ids}")
 
-                        # Visualize one keyframe from each submap id
-                        curr_frame_rgb = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2RGB)
-                        cv2.imshow(f'Query KF in submap ID {self.submap_id}', curr_frame_rgb)
-                        for mid_pt in matched_loop_closure_submap_ids:
-                            mid = mid_pt.item()
-                            print(self.loop_closer.submap_lc_info[mid]['kf_id'])
-                            fid = self.loop_closer.submap_lc_info[mid]["kf_id"][0]
-                            matched_color_img = self.dataset[fid][1]
-                            matched_color_img_rgb = cv2.cvtColor(matched_color_img, cv2.COLOR_BGR2RGB)
-                            cv2.imshow(f'Matched Submap ID {mid}', matched_color_img_rgb)
-                        cv2.waitKey(0)
-                        cv2.destroyAllWindows()
+                        # # Visualize one keyframe from each submap id
+                        # curr_frame_rgb = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2RGB)
+                        # cv2.imshow(f'Query KF in submap ID {self.submap_id}', curr_frame_rgb)
+                        # for mid_pt in matched_loop_closure_submap_ids:
+                        #     mid = mid_pt.item()
+                        #     print(self.loop_closer.submap_lc_info[mid]['kf_ids'])
+                        #     fid = self.loop_closer.submap_lc_info[mid]["kf_ids"][0]
+                        #     matched_color_img = self.dataset[fid][1]
+                        #     matched_color_img_rgb = cv2.cvtColor(matched_color_img, cv2.COLOR_BGR2RGB)
+                        #     cv2.imshow(f'Matched Submap ID {mid}', matched_color_img_rgb)
+                        # cv2.waitKey(0)
+                        # cv2.destroyAllWindows()
 
                 self.start_new_submap(frame_id)
 
