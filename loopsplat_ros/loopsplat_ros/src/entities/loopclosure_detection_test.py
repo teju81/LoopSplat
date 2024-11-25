@@ -180,7 +180,7 @@ class GaussianSLAM(Node):
                 if self.submap_id<3:
                         print(f"\nNo loop closure detected at submap no.{self.submap_id}")
                 else:
-                    matched_loop_closure_submap_ids = self.loop_closer.detect_closure(self.submap_id)
+                    matched_loop_closure_submap_ids = self.loop_closer.detect_closurev2(self.submap_id)
                     if len(matched_loop_closure_submap_ids) == 0:
                         print(f"\nNo loop closure detected at submap no.{self.submap_id}")
                     else:

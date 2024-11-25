@@ -269,12 +269,12 @@ class Loop_closure(object):
                 matches = matcher.match(ld_query, ld_2)
                 matching_details = (mid, ind, fid)
 
-                match_annotated_img = cv2.drawMatches(curr_frame_gray, kp_query_cv, matched_color_img_gray, kp_2_cv, matches[:50], None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-                side_by_side = cv2.hconcat([curr_frame_rgb, matched_color_img_rgb])
-                stacked_image = np.vstack((side_by_side, match_annotated_img))
-                cv2.imshow(f'Query Details: {query_details} and current matching frame details {matching_details}', stacked_image)
-                cv2.waitKey(0)
-                cv2.destroyAllWindows()
+                # match_annotated_img = cv2.drawMatches(curr_frame_gray, kp_query_cv, matched_color_img_gray, kp_2_cv, matches[:50], None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+                # side_by_side = cv2.hconcat([curr_frame_rgb, matched_color_img_rgb])
+                # stacked_image = np.vstack((side_by_side, match_annotated_img))
+                # cv2.imshow(f'Query Details: {query_details} and current matching frame details {matching_details}', stacked_image)
+                # cv2.waitKey(0)
+                # cv2.destroyAllWindows()
 
                 # Find the key frame with the closest distance
                 avg_distance = sum(match.distance for match in matches) / len(matches)
@@ -302,7 +302,167 @@ class Loop_closure(object):
 
 
         return matched_map_ids
-    
+
+    def detect_closurev2(self, query_id: int, final=False):
+        """detect closure given a submap_id, we only match it to the submaps before it
+
+        Args:
+            query_id (int): the submap id used to detect closure
+
+        Returns:
+            torch.Tensor: 1d vector of matched submap_id
+        """
+        n_submaps = self.submap_id + 1
+        query_info = self.submap_lc_info[query_id]
+        iterator = range(query_id+1, n_submaps) if final else range(query_id)
+        db_info_list = [self.submap_lc_info[i] for i in iterator]
+        db_desc_map_id = []
+        for db_info in db_info_list:
+            db_desc_map_id += [db_info['submap_id'] for _ in db_info['global_desc']]
+        db_desc_map_id = torch.Tensor(db_desc_map_id).to(self.device)
+        
+        query_desc = query_info['global_desc']
+        db_desc = torch.cat([db_info['global_desc'] for db_info in db_info_list])
+        
+        with torch.no_grad():
+            cross_sim = torch.einsum("id,jd->ij", query_desc, db_desc)
+            self_sim = query_info['self_sim']
+            print(f"Number of submaps {n_submaps}")
+            print(f"query desc shape: {query_desc.shape}")
+            print(f"DB desc shape: {db_desc.shape}")
+            print("Cross sim and self sim are given below")
+            print(f"cross sim shape: {cross_sim.shape}")
+            print(f"score min shape: {self_sim.shape}")
+            print("retrieving matches.....")
+            
+            
+            # For each frame in the query submap, retrieve the frames where 
+            # cross similarity with the query frames is greater than the median self similarity score of the query frame
+
+            query_sim_median = self_sim[:,[-1]]
+            
+            #Row indicates query frame, column indicates frame in the database
+            scores = cross_sim[cross_sim > query_sim_median]
+            matches = torch.argwhere(cross_sim > query_sim_median)[:,-1] #Ignore row and return only column IDs
+            print(f"Matched frame IDs: {matches}")
+            matched_map_ids = db_desc_map_id[matches].long()
+            print(f"Matched submap IDs: {matched_map_ids.unique()}")
+        # filter out invalid matches
+        filtered_mask = abs(matched_map_ids - query_id) > self.min_interval
+        matched_map_ids = matched_map_ids[filtered_mask]
+        print(f"Candidate submap ids need to be at a minimum interval of {self.min_interval} from query id: {query_id}")
+        print(f"Filtered Matched submap IDs: {matched_map_ids.unique()}")
+
+        # Aggregate scores for the submap
+        submap_scores = torch.zeros(n_submaps, device=self.device)
+        if matched_map_ids.numel() > 0:
+            for idx, submap_id in enumerate(matched_map_ids):
+                submap_scores[submap_id] += scores[idx]
+            best_submap_id = torch.argmax(submap_scores)
+            best_submap_score = torch.max(submap_scores)
+            print(f"Submap scoring is done... Submap scores: {submap_scores}")
+            print(f"Best submap is identified as {best_submap_id} with a score pf {best_submap_score}")
+
+            # Perform geometric verification if there is a submap match
+
+            matcher_type = 'BF'
+            if matcher_type == 'BF':
+                matcher = cv2.BFMatcher(cv2.NORM_L2, crossCheck=True)
+            elif matcher_type == 'FLANN':
+                index_params = dict(algorithm=1, trees=5)  # FLANN parameters for KD-Tree
+                search_params = dict(checks=50)
+                matcher = cv2.FlannBasedMatcher(index_params, search_params)
+            else:
+                raise ValueError("Invalid matcher_type. Use 'BF' or 'FLANN'.")
+
+            # Find the best query and candidate keyframe pairs
+            best_submap_id = best_submap_id.item()
+            best_avg_distance = float('inf')
+            query_kf_ids = self.submap_lc_info[query_id]["kf_ids"]
+
+            # Iterate through the key frames in the query submap
+            for qidx, query_kf_id in enumerate(query_kf_ids):
+                query_details = (query_id, qidx, query_kf_id)
+                query_image = self.dataset[query_kf_id][1]
+                curr_frame_rgb = cv2.cvtColor(query_image, cv2.COLOR_BGR2RGB)
+                curr_frame_gray = cv2.cvtColor(query_image, cv2.COLOR_BGR2GRAY)
+
+
+                kp_scores_query = self.submap_lc_info[query_id]["keypoint_scores"][qidx]
+                kp_query = self.submap_lc_info[query_id]["keypoints"][qidx]
+                kp_query_np = kp_query.cpu().numpy()
+                kp_query_cv = [cv2.KeyPoint(x=kp[0], y=kp[1], size=int(kp_scores_query[i].item() * 50)) for i, kp in enumerate(kp_query_np)]
+                ld_query = self.submap_lc_info[query_id]["local_descriptors"][qidx]
+                ld_query = ld_query.T.cpu().numpy().astype(np.float32)
+
+                # Iterate through the key frames in the best candidate submap
+                for idx, fid in enumerate(self.submap_lc_info[best_submap_id]["kf_ids"]):
+                    matched_color_img = self.dataset[fid][1]
+                    matched_color_img_rgb = cv2.cvtColor(matched_color_img, cv2.COLOR_BGR2RGB)
+                    matched_color_img_gray = cv2.cvtColor(matched_color_img, cv2.COLOR_BGR2GRAY)
+                    
+                    kp_scores_2 = self.submap_lc_info[best_submap_id]["keypoint_scores"][idx]
+                    kp_2 = self.submap_lc_info[best_submap_id]["keypoints"][idx]
+                    kp_2_np = kp_2.cpu().numpy()
+                    kp_2_cv = [cv2.KeyPoint(x=kp[0], y=kp[1], size=int(kp_scores_2[i].item() * 50)) for i, kp in enumerate(kp_2_np)]
+                    ld_2 = self.submap_lc_info[best_submap_id]["local_descriptors"][idx]
+                    ld_2 = ld_2.T.cpu().numpy().astype(np.float32)
+
+                    # Match descriptors using BFMatcher
+                    matches = matcher.match(ld_query, ld_2)
+                    matching_details = (best_submap_id, idx, fid)
+
+                    # match_annotated_img = cv2.drawMatches(curr_frame_gray, kp_query_cv, matched_color_img_gray, kp_2_cv, matches[:50], None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+                    # side_by_side = cv2.hconcat([curr_frame_rgb, matched_color_img_rgb])
+                    # stacked_image = np.vstack((side_by_side, match_annotated_img))
+                    # cv2.imshow(f'Query Details: {query_details} and current matching frame details {matching_details}', stacked_image)
+                    # cv2.waitKey(0)
+                    # cv2.destroyAllWindows()
+
+                    # Find the key frame with the closest distance
+                    avg_distance = sum(match.distance for match in matches) / len(matches)
+
+                    # Update the best match
+                    if avg_distance < best_avg_distance:
+                        best_avg_distance = avg_distance
+                        best_ind = idx
+                        best_kfid = fid
+                        best_matched_color_img_rgb = matched_color_img_rgb
+                        best_matched_color_img_gray = matched_color_img_gray
+                        best_kp_2_cv = kp_2_cv
+                        best_matches = matches
+                        best_matching_details = matching_details
+                        best_qidx = qidx
+                print(f"After comparing with query frame number: {qidx} best score is {best_avg_distance}")
+            print(f"Query KFID: {best_qidx} and Candidate KFID: {best_kfid} have a match with avg. distance {best_avg_distance}")
+
+
+            query_kf_id = query_kf_ids[best_qidx]
+            query_details = (query_id, best_qidx, query_kf_id)
+            query_image = self.dataset[query_kf_id][1]
+            curr_frame_rgb = cv2.cvtColor(query_image, cv2.COLOR_BGR2RGB)
+            curr_frame_gray = cv2.cvtColor(query_image, cv2.COLOR_BGR2GRAY)
+
+
+            kp_scores_query = self.submap_lc_info[query_id]["keypoint_scores"][best_qidx]
+            kp_query = self.submap_lc_info[query_id]["keypoints"][best_qidx]
+            kp_query_np = kp_query.cpu().numpy()
+            kp_query_cv = [cv2.KeyPoint(x=kp[0], y=kp[1], size=int(kp_scores_query[i].item() * 50)) for i, kp in enumerate(kp_query_np)]
+            ld_query = self.submap_lc_info[query_id]["local_descriptors"][best_qidx]
+            ld_query = ld_query.T.cpu().numpy().astype(np.float32)
+
+            match_annotated_img = cv2.drawMatches(curr_frame_gray, kp_query_cv, best_matched_color_img_gray, best_kp_2_cv, best_matches[:50], None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+            side_by_side = cv2.hconcat([curr_frame_rgb, best_matched_color_img_rgb])
+            stacked_image = np.vstack((side_by_side, match_annotated_img))
+            cv2.imshow(f'Query Details: {query_details} has best match with {best_matching_details}', stacked_image)
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
+                #cv2.imshow(f'Query KF ID: 0 in submap ID {query_id} has matched with keyframe id: 0 in Submap ID {mid}', side_by_side)
+                #cv2.imshow(f'Keypoint Matches', match_annotated_img)
+                #break
+
+        return matched_map_ids.unique()
+
     def construct_pose_graph(self, final=False):
         """Build the pose graph from detected loops
 
