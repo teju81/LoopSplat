@@ -335,7 +335,6 @@ class Loop_closure(object):
             print(f"score min shape: {self_sim.shape}")
             print("retrieving matches.....")
             
-            
             # For each frame in the query submap, retrieve the frames where 
             # cross similarity with the query frames is greater than the median self similarity score of the query frame
 
@@ -387,7 +386,6 @@ class Loop_closure(object):
                 curr_frame_rgb = cv2.cvtColor(query_image, cv2.COLOR_BGR2RGB)
                 curr_frame_gray = cv2.cvtColor(query_image, cv2.COLOR_BGR2GRAY)
 
-
                 kp_scores_query = self.submap_lc_info[query_id]["keypoint_scores"][qidx]
                 kp_query = self.submap_lc_info[query_id]["keypoints"][qidx]
                 kp_query_np = kp_query.cpu().numpy()
@@ -400,7 +398,7 @@ class Loop_closure(object):
                     matched_color_img = self.dataset[fid][1]
                     matched_color_img_rgb = cv2.cvtColor(matched_color_img, cv2.COLOR_BGR2RGB)
                     matched_color_img_gray = cv2.cvtColor(matched_color_img, cv2.COLOR_BGR2GRAY)
-                    
+
                     kp_scores_2 = self.submap_lc_info[best_submap_id]["keypoint_scores"][idx]
                     kp_2 = self.submap_lc_info[best_submap_id]["keypoints"][idx]
                     kp_2_np = kp_2.cpu().numpy()
@@ -408,19 +406,28 @@ class Loop_closure(object):
                     ld_2 = self.submap_lc_info[best_submap_id]["local_descriptors"][idx]
                     ld_2 = ld_2.T.cpu().numpy().astype(np.float32)
 
-                    # Match descriptors using BFMatcher
+                    # Match descriptors using Brute Force Matcher
+                    # Alternative approaches include using knn matcher or superglue
                     matches = matcher.match(ld_query, ld_2)
                     matching_details = (best_submap_id, idx, fid)
 
-                    # match_annotated_img = cv2.drawMatches(curr_frame_gray, kp_query_cv, matched_color_img_gray, kp_2_cv, matches[:50], None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+                    # Remove outliers and work only with inliers
+                    points_query = np.float32([kp_query_cv[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
+                    points_train = np.float32([kp_2_cv[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
+                    H, mask = cv2.findHomography(points_query, points_train, cv2.RANSAC, 5.0) # Alternate approaches - Retrieve fundamental matrix
+                    inliers = [matches[i] for i in range(len(mask)) if mask[i]]
+                    outliers_by_geometry = [matches[i] for i in range(len(mask)) if not mask[i]]
+
+                    # Find the key frame with the closest distance
+                    avg_distance = sum(inlier.distance for inlier in inliers) / len(inliers)
+
+                    # match_annotated_img = cv2.drawMatches(curr_frame_gray, kp_query_cv, matched_color_img_gray, kp_2_cv, inliers[:50], None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
                     # side_by_side = cv2.hconcat([curr_frame_rgb, matched_color_img_rgb])
                     # stacked_image = np.vstack((side_by_side, match_annotated_img))
                     # cv2.imshow(f'Query Details: {query_details} and current matching frame details {matching_details}', stacked_image)
                     # cv2.waitKey(0)
                     # cv2.destroyAllWindows()
-
-                    # Find the key frame with the closest distance
-                    avg_distance = sum(match.distance for match in matches) / len(matches)
+                    #print(f"After comparing with query frame number: {qidx}, with candidate keyframe {idx} found {len(inliers)} key point matches and average distance is {avg_distance}")
 
                     # Update the best match
                     if avg_distance < best_avg_distance:
@@ -430,19 +437,17 @@ class Loop_closure(object):
                         best_matched_color_img_rgb = matched_color_img_rgb
                         best_matched_color_img_gray = matched_color_img_gray
                         best_kp_2_cv = kp_2_cv
-                        best_matches = matches
+                        best_matches = inliers
                         best_matching_details = matching_details
                         best_qidx = qidx
-                print(f"After comparing with query frame number: {qidx} best score is {best_avg_distance}")
-            print(f"Query KFID: {best_qidx} and Candidate KFID: {best_kfid} have a match with avg. distance {best_avg_distance}")
-
+                        #print(f"This is the best match till now... Updating the details of the best match!!")
+            print(f"Best match obtained: Query KFID: {best_qidx} and Candidate KFID: {best_kfid} have {len(best_matches)} with avg. distance {best_avg_distance}")
 
             query_kf_id = query_kf_ids[best_qidx]
             query_details = (query_id, best_qidx, query_kf_id)
             query_image = self.dataset[query_kf_id][1]
             curr_frame_rgb = cv2.cvtColor(query_image, cv2.COLOR_BGR2RGB)
             curr_frame_gray = cv2.cvtColor(query_image, cv2.COLOR_BGR2GRAY)
-
 
             kp_scores_query = self.submap_lc_info[query_id]["keypoint_scores"][best_qidx]
             kp_query = self.submap_lc_info[query_id]["keypoints"][best_qidx]
@@ -460,6 +465,12 @@ class Loop_closure(object):
                 #cv2.imshow(f'Query KF ID: 0 in submap ID {query_id} has matched with keyframe id: 0 in Submap ID {mid}', side_by_side)
                 #cv2.imshow(f'Keypoint Matches', match_annotated_img)
                 #break
+
+        # To DO: For Map merging - Alternative is to use ICP with Gaussians (implemented in this file, take a look at graph construction for details)
+        # Step 1: Find object points from Query key frame (Robot A) - converting pixel locations into 3D world coordinates using the camera intrinsics
+        # Step 2: Find image points from candidate key frame (Robot B) - matching 2D keypoints present in the keyframe
+        # Step 3: Apply PNP to recover pose - R and T
+        # Step 4: Apply transformation on all submaps of the 
 
         return matched_map_ids.unique()
 
