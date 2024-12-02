@@ -1,0 +1,6 @@
+string msg
+int32 frame_id
+std_msgs/Float32MultiArray estimated_c2w
+float32 exposure_a
+float32 exposure_b
+bool should_start_new_submap

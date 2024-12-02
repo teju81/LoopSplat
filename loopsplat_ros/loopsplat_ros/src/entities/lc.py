@@ -503,7 +503,7 @@ class Loop_closure(object):
         odometry_edges, loop_edges = [], []
         new_submap_valid_loop = False
         for source_id in tqdm(reversed(range(1, n_submaps))):
-            matches = self.detect_closure(source_id, final)
+            matches = self.detect_closurev2(source_id, final)
             iterator = range(source_id+1, n_submaps) if final else range(source_id)
             for target_id in iterator:
                 if abs(target_id - source_id)== 1: # odometry edge
@@ -565,7 +565,7 @@ class Loop_closure(object):
         self.submap_paths = sorted(glob.glob(str(self.submap_path/"*.ckpt")), key=lambda x: int(x.split('/')[-1][:-5]))
         
         
-        if self.submap_id<3 or len(self.detect_closure(self.submap_id)) == 0:
+        if self.submap_id<3 or len(self.detect_closurev2(self.submap_id)) == 0:
             print(f"\nNo loop closure detected at submap no.{self.submap_id}")
             return correction_list
 

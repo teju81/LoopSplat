@@ -25,6 +25,8 @@ setup(
     entry_points={
         'console_scripts': [
             'gaussian_slam = loopsplat_ros.src.entities.gaussian_slam:main',
+            'frontend_slam = loopsplat_ros.src.entities.frontend_slam:main',
+            'backend_slam = loopsplat_ros.src.entities.backend_slam:main',
             'slam_gui = loopsplat_ros.src.gui.slam_gui:main',
             'loopclosure_detection_test = loopsplat_ros.src.entities.loopclosure_detection_test:main',
         ],
